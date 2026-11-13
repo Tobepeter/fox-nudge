@@ -40,6 +40,7 @@ import { Input } from './ui/input'
 import { AutoTextarea } from './auto-textarea'
 import { ConfirmAction } from './confirm-action'
 import { ConnectionStatus } from './connection-status'
+import { OverflowText } from './overflow-text'
 import { Tip } from './tip'
 import { UndoNotice, type PendingUndo } from './undo-notice'
 import { recentSent } from '../lib/recent'
@@ -183,7 +184,7 @@ function Row(props: {
             className={`${FIELD} justify-start ${sortable.isDragging ? 'shadow-md' : ''}`}
             onClick={props.send}
           >
-            <span className='truncate'>{props.item.text}</span>
+            <OverflowText text={props.item.text} />
           </Button>
         )}
       </Line>
@@ -502,7 +503,7 @@ export function Compose(props: {
                           className={`${FIELD} justify-start bg-transparent text-muted-foreground shadow-none hover:text-foreground`}
                           onClick={() => void send(id, text)}
                         >
-                          <span className='truncate'>{text}</span>
+                          <OverflowText text={text} />
                         </Button>
                       </Line>
                     </li>

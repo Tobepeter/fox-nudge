@@ -8,7 +8,8 @@ const handle = TooltipPrimitive.createHandle<ReactNode>()
 export function TipHost() {
   return (
     <TooltipPrimitive.Root handle={handle}>
-      {({ payload }) => <TooltipContent>{payload}</TooltipContent>}
+      {/* 没有内容时不渲染，供“只在文字被截断时提示全文”这类按需提示使用 */}
+      {({ payload }) => (payload ? <TooltipContent>{payload}</TooltipContent> : null)}
     </TooltipPrimitive.Root>
   )
 }

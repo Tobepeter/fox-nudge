@@ -264,7 +264,8 @@ export class WebRuntime {
         return
       case 'debug_fill_history': {
         const texts = ['叮', '来一下', '吃饭啦', '好了', '收到', '马上到', '在吗', '下午三点开会别忘了', '构建完成，可以看了', '帮我看下这个报错', '今天早点走', '快递到了', '喝水', '会议改到明天上午', '这是一条比较长的消息，用来看历史里一行放不下的时候怎么截断显示，后面还有很多字']
-        const senders = [['debug-xiaoming', '小明', 'name'], ['debug-ahu', '阿狐', 'openPeeps'], ['debug-lucy', 'Lucy', 'notionists'], ['debug-tobe', 'tobe', 'lorelei']]
+        const senders = [['debug-xiaoming', '小明', 'name'], ['debug-ahu', '阿狐', 'openPeeps'], ['debug-lucy', 'Lucy', 'notionists'], ['debug-tobe', 'tobe', 'lorelei'], ['debug-long-cn', '欧阳慕容东方西门北冥南宫上官司马', 'name'], ['debug-long-en', 'Alexander Wright', 'adventurer']]
+        texts.push('这是一条写满 500 字的消息，用来看历史和悬停提示在内容最长时的样子。'.repeat(20).slice(0, 500), '这条刚好一百个字，和文案的长度上限一样，用来看最近发过和文案两边在内容最长时怎么截断。'.repeat(3).slice(0, 100))
         const now = Math.floor(Date.now() / 1000)
         const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)]
         for (let i = 0; i < Number(args.count); i++) {

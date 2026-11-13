@@ -2,6 +2,7 @@ import { Trash2 } from 'lucide-react'
 import { ConfirmAction } from './confirm-action'
 import { HelpTip } from './help-tip'
 import { Avatar } from './avatar'
+import { OverflowText } from './overflow-text'
 import { groupHistory } from '../lib/history-groups'
 import type { Identity, Message } from '../lib/runtime'
 
@@ -60,7 +61,6 @@ export function History(props: {
                         key={m.id}
                         data-message-id={m.id}
                         className='flex items-baseline gap-3 py-1.5'
-                        title={text}
                       >
                         <span className='w-12 shrink-0 text-muted-foreground tabular-nums'>
                           {time(m.time)}
@@ -72,15 +72,12 @@ export function History(props: {
                             avatar={m.mine ? props.avatarStyle : m.senderAvatar}
                             size={24}
                           />
-                          <span className='truncate'>
-                            {m.mine ? '我' : m.senderName || '—'}
-                          </span>
+                          <OverflowText text={m.mine ? '我' : m.senderName || '—'} />
                         </span>
-                        <span
-                          className={`min-w-0 flex-1 truncate ${m.status === 'undecryptable' ? 'text-muted-foreground' : ''}`}
-                        >
-                          {text}
-                        </span>
+                        <OverflowText
+                          text={text}
+                          className={`flex-1 ${m.status === 'undecryptable' ? 'text-muted-foreground' : ''}`}
+                        />
                       </li>
                     )
                   })}

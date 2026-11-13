@@ -159,7 +159,7 @@ function MessageTab({ snapshot }: { snapshot: Snapshot }) {
                       '在吗',
                       '开会了',
                       '帮我看下这个报错',
-                      '这条文案特别长，用来看文案列表里一行放不下的时候会怎么截断显示',
+                      '这条文案写满一百个字，和文案的长度上限一样，用来看文案在内容最长时的截断和悬停提示。'.repeat(3).slice(0, 100),
                     ].map((text) => ({ id: crypto.randomUUID(), text })),
                   ),
                 '已填满 10 条文案，可用「恢复默认」改回',
