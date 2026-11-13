@@ -264,7 +264,23 @@ fn status_failure(status: reqwest::StatusCode) -> Failure {
     }
 }
 
+/// 底层错误链，脱敏后写日志，界面只显示简短原因
+fn error_detail(e: &reqwest::Error) -> String {
+    let mut parts = vec![e.to_string()];
+    let mut source = std::error::Error::source(e);
+    while let Some(inner) = source {
+        parts.push(inner.to_string());
+        source = inner.source();
+    }
+    log::redact_text(&parts.join(": "))
+}
+
 fn network_failure(e: reqwest::Error) -> Failure {
+    log::warn(
+        "net",
+        "request-failed",
+        json!({ "connect": e.is_connect(), "timeout": e.is_timeout(), "detail": error_detail(&e) }),
+    );
     let text = if e.is_connect() {
         "连不上服务器".to_string()
     } else if e.is_timeout() {
@@ -565,11 +581,24 @@ pub async fn publish(app: &AppHandle, title: String, body: String) -> Result<Mes
     if !cfg.token.is_empty() {
         req = req.bearer_auth(&cfg.token);
     }
-    let response = req.send().await.map_err(|e| {
-        let failure = network_failure(e);
-        log::warn("message", "send-failed", json!({ "reason": failure.text() }));
-        failure.text().to_string()
-    })?;
+    // 连不上（请求根本没发出去）时重试两次，不会重复发消息；代理或网络瞬断时常见
+    let mut attempt = 0u64;
+    let response = loop {
+        let result = req.try_clone().ok_or("请求无法重试")?.send().await;
+        match result {
+            Ok(response) => break response,
+            Err(e) if e.is_connect() && attempt < 2 => {
+                attempt += 1;
+                log::warn("message", "send-retry", json!({ "attempt": attempt, "detail": error_detail(&e) }));
+                tokio::time::sleep(Duration::from_millis(400 * attempt)).await;
+            }
+            Err(e) => {
+                let failure = network_failure(e);
+                log::warn("message", "send-failed", json!({ "reason": failure.text(), "attempts": attempt + 1 }));
+                return Err(failure.text().to_string());
+            }
+        }
+    };
     if !response.status().is_success() {
         let failure = status_failure(response.status());
         log::warn("message", "send-failed", json!({ "reason": failure.text() }));
