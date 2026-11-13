@@ -137,8 +137,8 @@ export class WebRuntime {
         return structuredClone(this.state)
       case 'save_settings': {
         const settings = structuredClone(args.settings as Settings)
-        settings.server = settings.server.trim().replace(/\/+$/, '')
-        settings.topic = settings.topic.trim()
+        settings.server = settings.server.trim().replace(/\/+$/, '') || this.#initial.settings.server
+        settings.topic = settings.topic.trim() || this.#initial.settings.topic
         settings.pollSeconds = Math.min(3600, Math.max(15, settings.pollSeconds))
         this.#validate(settings)
         const previous = this.state.settings

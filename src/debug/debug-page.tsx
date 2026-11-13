@@ -22,7 +22,7 @@ export function DebugPage(props: { snapshot: Snapshot }) {
     <div className='max-w-2xl space-y-6 pb-4'>
       <h2 className='font-medium text-amber-600 dark:text-amber-400'>调试</h2>
       <section className='space-y-2'>
-        <h3 className='text-xs font-medium text-muted-foreground'>模拟收到消息</h3>
+        <h3 className='text-muted-foreground'>模拟收到消息</h3>
         <div className='flex gap-2'>
           <Input className='w-32' value={sender} onChange={(e) => setSender(e.target.value)} placeholder='发送者' />
           <Input value={body} onChange={(e) => setBody(e.target.value)} placeholder='内容' />
@@ -50,7 +50,7 @@ export function DebugPage(props: { snapshot: Snapshot }) {
         </div>
       </section>
       <section className='space-y-2'>
-        <h3 className='text-xs font-medium text-muted-foreground'>连接</h3>
+        <h3 className='text-muted-foreground'>连接</h3>
         <div className='flex flex-wrap gap-2'>
           <Button variant='outline' onClick={() => void run(api.debugDisconnect)}>
             模拟断线
@@ -59,9 +59,9 @@ export function DebugPage(props: { snapshot: Snapshot }) {
             重新连接
           </Button>
         </div>
-        <pre className='app-scroll overflow-auto rounded-lg bg-muted p-3 text-xs'>{JSON.stringify(props.snapshot.connection, null, 2)}</pre>
+        <pre className='app-scroll overflow-auto rounded-lg bg-muted p-3'>{JSON.stringify(props.snapshot.connection, null, 2)}</pre>
       </section>
-      <section className='space-y-1 text-xs text-muted-foreground'>
+      <section className='space-y-1 text-muted-foreground'>
         <p>探针：window.__DEBUG__.nudge.app，桌面开发版可用 pnpm probe -- snapshot</p>
       </section>
     </div>

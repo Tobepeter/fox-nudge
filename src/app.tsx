@@ -163,7 +163,7 @@ export function App() {
         </nav>
         <div className='mt-auto space-y-2'>
           {!desktop && (
-            <span className='block px-2 text-xs text-amber-600 dark:text-amber-400'>
+            <span className='block px-2 text-amber-600 dark:text-amber-400'>
               {webPreview ? 'Web 模拟' : '浏览器只读预览'}
             </span>
           )}

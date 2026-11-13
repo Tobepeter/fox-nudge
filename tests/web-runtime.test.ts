@@ -107,8 +107,10 @@ test('设置校验与改主题重连', async () => {
   const next = await snapshot(rt)
   assert.equal(next.settings.server, 'https://x')
   assert.equal(next.connection.state, 'connecting')
-  await rt.command('save_settings', { settings: { ...next.settings, server: '', topic: '' } })
-  assert.equal((await snapshot(rt)).connection.state, 'unconfigured')
+  await rt.command('save_settings', { settings: { ...next.settings, server: '', topic: ' ' } })
+  const cleared = await snapshot(rt)
+  assert.equal(cleared.settings.server, 'https://notify.tobeei.com', '清空地址回到默认')
+  assert.equal(cleared.settings.topic, 'notify-main')
   rt.dispose()
 })
 

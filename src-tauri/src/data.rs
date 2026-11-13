@@ -49,8 +49,16 @@ pub const SOUNDS: [&str; 8] = [
 ];
 impl Settings {
     pub fn normalize(&mut self) {
+        // 地址和主题留空就回到默认值，界面上以灰色占位显示
+        let defaults = Settings::default();
         self.server = self.server.trim().trim_end_matches('/').to_string();
+        if self.server.is_empty() {
+            self.server = defaults.server;
+        }
         self.topic = self.topic.trim().to_string();
+        if self.topic.is_empty() {
+            self.topic = defaults.topic;
+        }
         self.poll_seconds = self.poll_seconds.clamp(15, 3600);
     }
     pub fn validate(&self) -> Result<(), String> {
@@ -307,6 +315,15 @@ mod tests {
         s.topic = "ok_topic-1".into();
         s.server = "ftp://x".into();
         assert!(s.validate().is_err());
+    }
+    #[test]
+    fn empty_server_and_topic_fall_back_to_defaults() {
+        let mut s = Settings { server: "  ".into(), topic: "".into(), ..Settings::default() };
+        s.normalize();
+        assert_eq!((s.server.as_str(), s.topic.as_str()), ("https://notify.tobeei.com", "notify-main"));
+        s.server = "https://x.example/".into();
+        s.normalize();
+        assert_eq!(s.server, "https://x.example");
     }
     #[test]
     fn old_templates_still_load() {

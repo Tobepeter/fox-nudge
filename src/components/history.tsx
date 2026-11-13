@@ -36,7 +36,7 @@ export function History(props: { messages: Message[]; clear: () => Promise<boole
               const text = m.status === 'undecryptable' ? '无法解密' : [m.title, m.body].filter(Boolean).join(' · ')
               return (
                 <li key={m.id} data-message-id={m.id} className='flex items-baseline gap-3 py-1.5' title={text}>
-                  <span className='w-20 shrink-0 text-xs text-muted-foreground tabular-nums'>{when(m.time)}</span>
+                  <span className='w-20 shrink-0 text-muted-foreground tabular-nums'>{when(m.time)}</span>
                   <span className='w-20 shrink-0 truncate text-muted-foreground'>{m.mine ? '我' : m.senderName || '—'}</span>
                   <span className={`min-w-0 flex-1 truncate ${m.status === 'undecryptable' ? 'text-muted-foreground' : ''}`}>{text}</span>
                 </li>
