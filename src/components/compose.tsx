@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { GripVertical, Pencil, Plus, SendHorizontal, X } from 'lucide-react'
 import {
   closestCenter,
@@ -68,6 +68,62 @@ function Row(props: { item: Template; update: (text: string) => void; remove: ()
         </Button>
       </Tip>
     </li>
+  )
+}
+
+// 发送列表的一行：整行点击广播，整行拖动排序；移动超过 6px 才算拖动，拖完不触发广播
+function SendRow(props: { item: Template; disabled: boolean; dragging: RefObject<boolean>; send: (text: string) => void }) {
+  const sortable = useSortable({ id: props.item.id })
+  return (
+    <li
+      ref={sortable.setNodeRef}
+      style={{ transform: CSS.Translate.toString(sortable.transform), transition: sortable.transition }}
+      className={sortable.isDragging ? 'relative z-10' : ''}
+      {...sortable.attributes}
+      {...sortable.listeners}
+    >
+      <Button
+        variant='outline'
+        className={`h-9 w-full justify-start ${sortable.isDragging ? 'cursor-grabbing shadow-md' : ''}`}
+        disabled={props.disabled}
+        onClick={() => !props.dragging.current && props.send(props.item.text)}
+      >
+        <span className='truncate'>{props.item.text}</span>
+      </Button>
+    </li>
+  )
+}
+
+function SendList(props: { items: Template[]; disabled: boolean; send: (text: string) => void; save: (next: Template[]) => void }) {
+  const { items } = props
+  const dragging = useRef(false)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  function onDragEnd({ active, over }: DragEndEvent) {
+    // 拖动结束后紧跟的 click 不算广播
+    setTimeout(() => (dragging.current = false), 0)
+    if (!over || active.id === over.id) return
+    props.save(arrayMove(items, items.findIndex((t) => t.id === active.id), items.findIndex((t) => t.id === over.id)))
+  }
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[vertical]}
+      onDragStart={() => (dragging.current = true)}
+      onDragCancel={() => (dragging.current = false)}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext items={items.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+        <ul className='max-w-md space-y-2'>
+          {items.map((item) => (
+            <SendRow key={item.id} item={item} disabled={props.disabled} dragging={dragging} send={props.send} />
+          ))}
+        </ul>
+      </SortableContext>
+    </DndContext>
   )
 }
 
@@ -191,13 +247,7 @@ export function Compose(props: {
         ) : items.length === 0 ? (
           <p className='text-muted-foreground'>暂无文案</p>
         ) : (
-          <div className='flex flex-wrap gap-2.5'>
-            {items.map((item) => (
-              <Button key={item.id} variant='outline' className='h-9 max-w-56 px-3.5' disabled={busy} onClick={() => void props.send(item.text)}>
-                <span className='truncate'>{item.text}</span>
-              </Button>
-            ))}
-          </div>
+          <SendList items={items} disabled={busy} save={save} send={(text) => void props.send(text)} />
         )}
       </div>
       {!editing && (
