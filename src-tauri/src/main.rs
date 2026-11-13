@@ -336,6 +336,10 @@ fn wipe_data(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(dir) = log::dir() {
         let _ = std::fs::remove_dir_all(&dir);
     }
+    // 通知用的头像缓存
+    if let Ok(dir) = app.path().app_cache_dir() {
+        let _ = std::fs::remove_dir_all(dir.join("avatars"));
+    }
     let fresh = Data::default();
     data::save(&fresh)?;
     let theme = fresh.settings.theme.clone();
@@ -413,6 +417,7 @@ fn main() {
         test_sound,
         test_notification,
         log_client,
+        alert::avatar_ready,
         debug::debug_reply,
         debug::debug_inject,
         debug::debug_disconnect,
@@ -437,6 +442,7 @@ fn main() {
         test_sound,
         test_notification,
         log_client,
+        alert::avatar_ready,
     ]);
     let app = builder
         .setup(move |app| {

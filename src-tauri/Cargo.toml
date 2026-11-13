@@ -29,6 +29,8 @@ rand = "0.8"
 objc2 = "0.6.3"
 objc2-app-kit = "0.3.2"
 objc2-foundation = "0.3.2"
+# 通知插件底层的库，直接用它才能在通知右侧放头像图片
+notify-rust = { version = "4.19", default-features = false }
 
 [dev-dependencies]
 ts-rs = "12"

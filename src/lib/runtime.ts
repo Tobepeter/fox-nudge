@@ -14,6 +14,8 @@ export const desktop = isTauri()
 export const webPreview = import.meta.env.DEV && !desktop
 export const available = desktop || webPreview
 
+export type AvatarRequest = { key: string; id: string | null; name: string | null; avatar: string | null }
+
 export type InjectMessage = {
   title?: string
   body: string
@@ -65,6 +67,7 @@ export const api = {
   openLogs: () => call('open_logs'),
   testSound: (sound: string) => call('test_sound', { sound }),
   testNotification: () => call('test_notification'),
+  avatarReady: (key: string, png: string) => call('avatar_ready', { key, png }),
   logClient: (level: 'warn' | 'error', event: string, detail: unknown) =>
     call('log_client', { level, event, detail }),
   // 以下只在开发版注册，生产构建里整段剔除
@@ -84,4 +87,6 @@ export const events = {
   navigate: (cb: (page: string) => void) => on('navigate', cb),
   compose: (cb: () => void) => on('compose', cb),
   error: (cb: (text: string) => void) => on('error', cb),
+  // Rust 弹通知前请前端把发送者头像画成 PNG
+  avatarRequest: (cb: (request: AvatarRequest) => void) => on('avatar-request', cb),
 }

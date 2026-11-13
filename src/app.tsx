@@ -5,6 +5,7 @@ import { Toaster } from './components/ui/sonner'
 import { Button } from './components/ui/button'
 import { Compose } from './components/compose'
 import { History } from './components/history'
+import { renderAvatarPng } from './components/avatar'
 import { Settings } from './components/settings'
 import { initial } from './lib/initial'
 import { api, available, desktop, events, webPreview, type Settings as SettingsData } from './lib/runtime'
@@ -45,6 +46,12 @@ export function App() {
         setTimeout(() => input.current?.focus(), 50)
       }),
       events.error((text) => toast.error(text, { id: 'backend-error' })),
+      // 通知右侧的发送者头像由前端画好交给 Rust，窗口隐藏时也能响应
+      events.avatarRequest((request) =>
+        void renderAvatarPng(request)
+          .then((png) => api.avatarReady(request.key, png))
+          .catch((e) => api.logClient('warn', 'avatar-render-failed', { error: String(e) }).catch(() => {})),
+      ),
     ]
     api
       .snapshot()
