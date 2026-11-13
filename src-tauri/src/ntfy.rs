@@ -321,7 +321,7 @@ async fn run(app: &AppHandle, cfg: &Config, attempts: &mut u32) -> Failure {
             set_status(app, |s| s.last_event_at = Some(now_ms() / 10_000 * 10_000));
             if event["event"] == "message" {
                 let backlog = event["time"].as_i64().unwrap_or(0) < connected - BACKLOG_GRACE_SECONDS;
-                receive(app, &event, backlog, true);
+                receive(app, &event, backlog, true, true);
             }
         }
     }
@@ -368,7 +368,7 @@ async fn poll(app: &AppHandle, cfg: &Config, attempts: &mut u32) -> Failure {
             .collect();
         for event in events.iter().filter(|e| e["event"] == "message") {
             // 首轮补收的是离线期间的消息，合并成一条提醒
-            receive(app, event, first, true);
+            receive(app, event, first, true, true);
         }
         first = false;
         tokio::time::sleep(Duration::from_secs(cfg.poll_seconds as u64)).await;
@@ -445,7 +445,8 @@ pub fn active_key(app: &AppHandle) -> Option<String> {
 
 /// 收到的消息统一从这里进：去重、存盘、通知界面、提醒
 /// cursor：是否把这条记为补收游标；模拟消息不是服务器上的 ID，不能当游标
-pub fn receive(app: &AppHandle, event: &Value, backlog: bool, cursor: bool) {
+/// alert：是否提醒；调试填充示例历史时关掉
+pub fn receive(app: &AppHandle, event: &Value, backlog: bool, cursor: bool, alert: bool) {
     let state = app.state::<AppState>();
     let key = active_key(app);
     let message = {
@@ -485,7 +486,7 @@ pub fn receive(app: &AppHandle, event: &Value, backlog: bool, cursor: bool) {
     }
     let _ = app.emit("message", &message);
     crate::notify(app);
-    if message.mine {
+    if message.mine || !alert {
         return;
     }
     if backlog {

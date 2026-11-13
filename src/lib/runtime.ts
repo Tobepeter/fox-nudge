@@ -22,6 +22,10 @@ export type InjectMessage = {
   backlog?: boolean
   wrongKey?: boolean
   avatar?: string
+  senderId?: string
+  anonymous?: boolean
+  ago?: number
+  silent?: boolean
 }
 
 // DEV 动态入口在生产构建中整体剔除

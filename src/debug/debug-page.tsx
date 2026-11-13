@@ -32,10 +32,38 @@ function Group(props: { title: string; children: ReactNode }) {
   )
 }
 
-function MessageTab() {
+const HOUR = 3600
+const DAY = 24 * HOUR
+
+// 一批分布在前天到现在的示例消息：不同发送者、不同头像风格、curl 来的、解不开的、长消息、自己发的
+function samples(snapshot: Snapshot): InjectMessage[] {
+  const me = { senderId: snapshot.identity.id, senderName: snapshot.identity.name, avatar: snapshot.settings.avatarStyle }
+  const xm = { senderId: 'debug-xiaoming', senderName: '小明', avatar: 'name' }
+  const fox = { senderId: 'debug-ahu', senderName: '阿狐', avatar: 'ring' }
+  const lucy = { senderId: 'debug-lucy', senderName: 'Lucy', avatar: 'bauhaus' }
+  const tobe = { senderId: 'debug-tobe', senderName: 'tobe', avatar: 'marble' }
+  const anon = { senderId: 'debug-anon', senderName: 'anonymous', avatar: 'pixel' }
+  return [
+    { ...xm, body: '在吗，来一下', ago: 2 * DAY + 3 * HOUR },
+    { ...fox, body: '吃饭啦', ago: 2 * DAY },
+    { anonymous: true, body: '构建完成：fox-nudge main 全部通过', ago: DAY + 5 * HOUR },
+    { ...tobe, body: '弄好了，可以看了', ago: DAY + 2 * HOUR },
+    { ...xm, body: '收到', ago: DAY },
+    { ...lucy, body: '下午三点开会别忘了', ago: 5 * HOUR },
+    { body: 'x', wrongKey: true, ago: 3 * HOUR },
+    { ...fox, encrypted: true, body: '这是一条比较长的消息，用来看看历史里一行放不下的时候怎么截断，后面还有很多字很多字很多字', ago: 2 * HOUR },
+    { ...me, body: '马上到', ago: 30 * 60 },
+    { ...anon, body: '叮', ago: 12 * 60 },
+    { ...lucy, body: '好了', ago: 3 * 60 },
+  ].map((m) => ({ ...m, silent: true }))
+}
+
+function MessageTab({ snapshot }: { snapshot: Snapshot }) {
   const [sender, setSender] = useState('小明')
   const [body, setBody] = useState('在吗，来一下')
-  const inject = (extra: Partial<InjectMessage> = {}) => run(() => api.debugInject({ senderName: sender, body, ...extra }))
+  // 不同名字用不同 ID，头像才会不同
+  const inject = (extra: Partial<InjectMessage> = {}) =>
+    run(() => api.debugInject({ senderName: sender, senderId: `debug-${sender}`, body, ...extra }))
   return (
     <div className='space-y-5'>
       <Group title='内容'>
@@ -57,12 +85,24 @@ function MessageTab() {
           </Button>
         </div>
       </Group>
+      <Group title='示例历史'>
+        <Button
+          variant='outline'
+          onClick={() =>
+            void run(async () => {
+              for (const m of samples(snapshot)) await api.debugInject(m)
+            }, '已填充示例历史')
+          }
+        >
+          填充一批，不提醒
+        </Button>
+      </Group>
       <Group title='离线补收'>
         <Button
           variant='outline'
           onClick={() =>
             void run(async () => {
-              for (let i = 1; i <= 3; i++) await api.debugInject({ senderName: sender, body: `离线消息 ${i}`, backlog: true })
+              for (let i = 1; i <= 3; i++) await api.debugInject({ senderName: sender, senderId: `debug-${sender}`, body: `离线消息 ${i}`, backlog: true })
             })
           }
         >
@@ -116,7 +156,7 @@ export function DebugPage(props: { snapshot: Snapshot }) {
         </ToggleGroup>
       </div>
       <div className='app-scroll -mx-4 min-h-0 flex-1 overflow-y-auto px-4'>
-        {tab === 'message' && <MessageTab />}
+        {tab === 'message' && <MessageTab snapshot={snapshot} />}
         {tab === 'connection' && <ConnectionTab snapshot={snapshot} />}
         {tab === 'state' && <StateTab />}
       </div>

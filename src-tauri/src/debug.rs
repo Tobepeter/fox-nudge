@@ -1,5 +1,6 @@
 //! DEV 调试：本机探针 HTTP 入口和模拟收消息，正式构建不编译
 use crate::{crypto, ntfy, AppState};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -124,8 +125,20 @@ pub struct Inject {
     body: String,
     #[serde(default)]
     sender_name: Option<String>,
+    /// 不同发送者用不同 ID，头像才会不同
+    #[serde(default)]
+    sender_id: Option<String>,
     #[serde(default)]
     avatar: Option<String>,
+    /// 像 curl 发的一样不带身份
+    #[serde(default)]
+    anonymous: bool,
+    /// 多少秒之前收到，用来铺开历史时间
+    #[serde(default)]
+    ago: Option<i64>,
+    /// 不弹通知不响，填充示例历史用
+    #[serde(default)]
+    silent: bool,
     #[serde(default)]
     encrypted: bool,
     /// 当作离线期间补收的消息，走合并提醒
@@ -142,6 +155,19 @@ pub fn debug_inject(app: AppHandle, message: Inject) -> Result<String, String> {
     let id = format!("debug-{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
     let now = chrono::Utc::now().timestamp();
     let name = message.sender_name.unwrap_or_else(|| "调试".into());
+    let sender_id = message.sender_id.unwrap_or_else(|| "debug-sender".into());
+    let avatar = message.avatar.unwrap_or_default();
+    let tags = if message.anonymous || message.encrypted || message.wrong_key {
+        vec![]
+    } else {
+        // 和真实明文消息一样把发送者放在标签里
+        vec![
+            "fn1".to_string(),
+            format!("fnid-{sender_id}"),
+            format!("fnname-{}", B64.encode(&name)),
+            format!("fnav-{avatar}"),
+        ]
+    };
     let text = if message.encrypted || message.wrong_key {
         let key = if message.wrong_key {
             "wrong-key".to_string()
@@ -152,7 +178,7 @@ pub fn debug_inject(app: AppHandle, message: Inject) -> Result<String, String> {
             &key,
             &crypto::Payload {
                 v: 1,
-                from: crypto::Sender { id: "debug-sender".into(), name, avatar: message.avatar.unwrap_or_default() },
+                from: crypto::Sender { id: sender_id, name, avatar },
                 title: message.title,
                 body: message.body,
             },
@@ -162,13 +188,13 @@ pub fn debug_inject(app: AppHandle, message: Inject) -> Result<String, String> {
     };
     let event = json!({
         "id": id,
-        "time": if message.backlog { now - 600 } else { now },
+        "time": now - message.ago.unwrap_or(if message.backlog { 600 } else { 0 }),
         "event": "message",
         "message": text,
         "title": "",
-        "tags": [],
+        "tags": tags,
     });
-    ntfy::receive(&app, &event, message.backlog, false);
+    ntfy::receive(&app, &event, message.backlog, false, !message.silent);
     Ok(id)
 }
 

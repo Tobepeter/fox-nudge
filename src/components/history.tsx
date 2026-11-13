@@ -6,9 +6,12 @@ import type { Identity, Message } from '../lib/runtime'
 
 function when(seconds: number) {
   const date = new Date(seconds * 1000)
-  const today = new Date().toDateString() === date.toDateString()
   const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  return today ? time : `${date.getMonth() + 1}-${date.getDate()} ${time}`
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const diff = Math.round((day(new Date()) - day(date)) / 86400000)
+  if (diff === 0) return time
+  if (diff === 1) return `昨天 ${time}`
+  return `${date.getMonth() + 1}-${date.getDate()} ${time}`
 }
 
 export function History(props: {
@@ -47,7 +50,7 @@ export function History(props: {
               const text = m.status === 'undecryptable' ? '无法解密' : [m.title, m.body].filter(Boolean).join(' · ')
               return (
                 <li key={m.id} data-message-id={m.id} className='flex items-baseline gap-3 py-1.5' title={text}>
-                  <span className='w-20 shrink-0 text-muted-foreground tabular-nums'>{when(m.time)}</span>
+                  <span className='w-24 shrink-0 whitespace-nowrap text-muted-foreground tabular-nums'>{when(m.time)}</span>
                   <span className='flex w-28 shrink-0 items-center gap-2 self-center text-muted-foreground'>
                     <Avatar
                       id={m.mine ? props.identity.id : m.senderId}

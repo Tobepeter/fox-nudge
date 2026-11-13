@@ -281,21 +281,28 @@ export class WebRuntime {
           backlog?: boolean
           wrongKey?: boolean
           avatar?: string
+          senderId?: string
+          anonymous?: boolean
+          ago?: number
+          silent?: boolean
         }
         const undecryptable = !!input.wrongKey
+        const unknown = undecryptable || (!!input.anonymous && !input.encrypted)
+        const senderId = input.senderId ?? 'debug-sender'
         const message: Message = {
           id: `debug-${randomId(10)}`,
-          time: Math.floor(Date.now() / 1000) - (input.backlog ? 600 : 0),
+          time: Math.floor(Date.now() / 1000) - (input.ago ?? (input.backlog ? 600 : 0)),
           title: undecryptable ? '' : (input.title ?? ''),
           body: undecryptable ? '' : input.body,
-          senderId: undecryptable ? null : 'debug-sender',
-          senderName: undecryptable ? null : (input.senderName ?? '调试'),
-          senderAvatar: undecryptable ? null : (input.avatar ?? null),
-          mine: false,
+          senderId: unknown ? null : senderId,
+          senderName: unknown ? null : (input.senderName ?? '调试'),
+          senderAvatar: unknown ? null : (input.avatar ?? null),
+          mine: !unknown && senderId === this.state.identity.id,
           encrypted: !!input.encrypted || undecryptable,
           status: undecryptable ? 'undecryptable' : 'ok',
         }
         this.#push(message)
+        if (input.silent || message.mine) return message.id
         if (this.state.settings.notify)
           this.effects.push({
             kind: 'notification',
