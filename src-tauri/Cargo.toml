@@ -29,9 +29,7 @@ rand = "0.8"
 objc2 = "0.6.3"
 objc2-app-kit = "0.3.2"
 objc2-foundation = "0.3.2"
-# 通知插件底层的库，直接用它才能在通知右侧放头像图片；preview-macos-un 改走新版 UNUserNotificationCenter
-notify-rust = { version = "4.19", default-features = false, features = ["preview-macos-un"] }
-# 新版通知接口的查权限、请求授权
+# 新版 UNUserNotificationCenter：发通知（右侧可带头像图片）、查权限、请求授权
 mac-usernotifications = "0.3"
 
 [dev-dependencies]

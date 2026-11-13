@@ -125,7 +125,7 @@ pub fn notify(app: &AppHandle, title: &str, body: &str) {
 /// 弹一条系统通知。
 /// tauri dev 没有 .app 包，通知插件会借用「终端」的身份，终端没有通知授权时系统直接丢弃，
 /// 所以 tauri dev 改用系统自带的 osascript 弹（显示为「脚本编辑器」，不支持图片）；
-/// 安装版和 debug 版 .app 直接用插件底层的 notify-rust（新版 UNUserNotificationCenter），才能带上右侧的头像图片
+/// 安装版和 debug 版 .app 用新版 UNUserNotificationCenter（mac-usernotifications），右侧能带头像图片
 fn notify_with(app: &AppHandle, title: &str, body: &str, image: Option<PathBuf>) {
     if tauri::is_dev() {
         // 标题和正文作为参数传入，不拼进脚本，免去转义
@@ -143,12 +143,12 @@ fn notify_with(app: &AppHandle, title: &str, body: &str, image: Option<PathBuf>)
     #[cfg(target_os = "macos")]
     {
         let _ = app;
-        let mut notification = notify_rust::Notification::new();
-        notification.summary(title).body(body);
+        let mut notification = mac_usernotifications::Notification::new().title(title).message(body);
         if let Some(path) = image.as_ref().and_then(|p| p.to_str()) {
-            notification.image_path(path);
+            notification = notification.image_path(path);
         }
-        if let Err(e) = notification.show() {
+        // 用异步的 send：它的阻塞写法会检查主线程事件循环是否空闲，Tauri 主循环忙时会误判失败
+        if let Err(e) = tauri::async_runtime::block_on(mac_usernotifications::send(notification)) {
             log::warn("alert", "notification-failed", json!({ "error": e.to_string() }));
         }
     }
