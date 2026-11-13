@@ -40,7 +40,7 @@ test('首次启动生成身份和默认模板，清除数据后换新身份', as
   const first = await snapshot(rt)
   assert.equal(first.identity.id.length, 12)
   assert.equal(first.identity.name, 'anonymous')
-  assert.equal(first.templates.length, 5)
+  assert.equal(first.templates.length, 6)
   await rt.command('wipe_data')
   assert.notEqual((await snapshot(rt)).identity.id, first.identity.id)
   rt.dispose()
@@ -145,7 +145,7 @@ test('重置设置保留昵称和文案，恢复默认文案', async () => {
   assert.deepEqual(next.templates.map((t) => t.text), ['自定义'])
   await rt.command('reset_templates')
   next = await snapshot(rt)
-  assert.deepEqual(next.templates.map((t) => t.text), ['叮', '来一下', '吃饭啦', '好了', '收到'])
+  assert.deepEqual(next.templates.map((t) => t.text), ['ding', 'hi', '叮', '来一下', '吃饭啦', '收到'])
   rt.dispose()
 })
 

@@ -215,7 +215,7 @@ impl Default for Data {
     }
 }
 pub fn default_templates() -> Vec<Template> {
-    ["叮", "来一下", "吃饭啦", "好了", "收到"]
+    ["ding", "hi", "叮", "来一下", "吃饭啦", "收到"]
         .into_iter()
         .map(|text| Template {
             id: uuid::Uuid::new_v4().to_string(),

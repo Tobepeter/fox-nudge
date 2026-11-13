@@ -35,7 +35,7 @@ function randomId(length: number) {
 }
 
 function defaultTemplates(): Template[] {
-  return ['叮', '来一下', '吃饭啦', '好了', '收到'].map((text) => ({ id: randomId(16), text }))
+  return ['ding', 'hi', '叮', '来一下', '吃饭啦', '收到'].map((text) => ({ id: randomId(16), text }))
 }
 
 export type WebRuntimeOptions = { connectMs?: number; retryMs?: number }
