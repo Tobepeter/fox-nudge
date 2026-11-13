@@ -42,9 +42,11 @@ fn status_text(app: &AppHandle) -> (bool, String) {
 fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let (_, text) = status_text(app);
     let templates = app.state::<AppState>().data.lock().unwrap().templates.clone();
-    let send = Submenu::with_id(app, "send", "发送模板", !templates.is_empty())?;
+    let send = Submenu::with_id(app, "send", "广播", !templates.is_empty())?;
     for t in &templates {
-        send.append(&MenuItem::with_id(app, format!("send:{}", t.id), &t.title, true, None::<&str>)?)?;
+        let label: String = t.text.chars().take(16).collect();
+        let label = if t.text.chars().count() > 16 { format!("{label}…") } else { label };
+        send.append(&MenuItem::with_id(app, format!("send:{}", t.id), label, true, None::<&str>)?)?;
     }
     Menu::with_items(
         app,
@@ -108,7 +110,7 @@ fn send_template(app: &AppHandle, id: String) {
     let Some(template) = template else { return };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = crate::ntfy::publish(&app, String::new(), template.body).await {
+        if let Err(e) = crate::ntfy::publish(&app, String::new(), template.text).await {
             log::warn("tray", "send-failed", json!({ "reason": e }));
             crate::alert_error(&app, &e);
         }

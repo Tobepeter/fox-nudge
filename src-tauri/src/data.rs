@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, sync::OnceLock};
 
 pub const HISTORY_LIMIT: usize = 300;
-pub const TEMPLATE_LIMIT: usize = 30;
+pub const TEMPLATE_LIMIT: usize = 10;
+pub const TEMPLATE_TEXT_LIMIT: usize = 100;
 pub const NAME_LIMIT: usize = 24;
 pub const BODY_LIMIT: usize = 500;
 
@@ -107,8 +108,9 @@ impl Identity {
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct Template {
     pub id: String,
-    pub title: String,
-    pub body: String,
+    /// 文案本身，点一下就原样广播；旧数据的 body 字段兼容读入
+    #[serde(alias = "body")]
+    pub text: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -151,19 +153,13 @@ impl Default for Data {
     }
 }
 pub fn default_templates() -> Vec<Template> {
-    [
-        ("来一下", "有空来一下"),
-        ("吃饭", "吃饭啦"),
-        ("好了", "弄好了，可以看了"),
-        ("收到", "收到"),
-    ]
-    .into_iter()
-    .map(|(title, body)| Template {
-        id: uuid::Uuid::new_v4().to_string(),
-        title: title.into(),
-        body: body.into(),
-    })
-    .collect()
+    ["叮", "来一下", "吃饭啦", "好了", "收到"]
+        .into_iter()
+        .map(|text| Template {
+            id: uuid::Uuid::new_v4().to_string(),
+            text: text.into(),
+        })
+        .collect()
 }
 impl Data {
     /// 新消息按时间插入，同 ID 不重复；返回是否新增
@@ -311,6 +307,11 @@ mod tests {
         s.topic = "ok_topic-1".into();
         s.server = "ftp://x".into();
         assert!(s.validate().is_err());
+    }
+    #[test]
+    fn old_templates_still_load() {
+        let t: Template = serde_json::from_str(r#"{"id":"1","title":"吃饭","body":"吃饭啦"}"#).unwrap();
+        assert_eq!(t.text, "吃饭啦");
     }
     #[test]
     fn identity_is_short_random() {

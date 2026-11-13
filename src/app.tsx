@@ -1,11 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Bug, History as HistoryIcon, LayoutGrid, Send, Settings as SettingsIcon } from 'lucide-react'
+import { Bug, History as HistoryIcon, Send, Settings as SettingsIcon } from 'lucide-react'
 import { Toaster } from './components/ui/sonner'
 import { Button } from './components/ui/button'
 import { Compose } from './components/compose'
 import { History } from './components/history'
-import { Templates } from './components/templates'
 import { Settings } from './components/settings'
 import { initial } from './lib/initial'
 import { api, available, desktop, events, webPreview, type Settings as SettingsData } from './lib/runtime'
@@ -17,7 +16,6 @@ const DebugPage = import.meta.env.DEV
 const pages = [
   { id: 'send', title: '发送', icon: Send },
   { id: 'history', title: '历史', icon: HistoryIcon },
-  { id: 'templates', title: '模板', icon: LayoutGrid },
   ...(DebugPage ? [{ id: 'debug', title: '调试', icon: Bug, className: 'text-amber-600 dark:text-amber-400' }] : []),
 ]
 
@@ -189,6 +187,7 @@ export function App() {
               setDraft={setDraft}
               sending={sending}
               send={send}
+              saveTemplates={(templates) => run(() => api.saveTemplates(templates))}
               reconnect={() => void run(api.reconnect)}
               inputRef={input}
               disabled={!available || working}
@@ -196,13 +195,6 @@ export function App() {
           )}
           {page === 'history' && (
             <History messages={snapshot.messages} clear={() => run(api.clearHistory)} disabled={!available || working} />
-          )}
-          {page === 'templates' && (
-            <Templates
-              templates={snapshot.templates}
-              save={(templates) => run(() => api.saveTemplates(templates))}
-              disabled={!available || working}
-            />
           )}
           {page === 'settings' && (
             <Settings snapshot={snapshot} disabled={!available || working} save={save} run={run} />

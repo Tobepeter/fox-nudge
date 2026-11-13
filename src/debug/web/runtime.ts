@@ -23,12 +23,7 @@ function randomId(length: number) {
 }
 
 function defaultTemplates(): Template[] {
-  return [
-    ['来一下', '有空来一下'],
-    ['吃饭', '吃饭啦'],
-    ['好了', '弄好了，可以看了'],
-    ['收到', '收到'],
-  ].map(([title, body]) => ({ id: randomId(16), title, body }))
+  return ['叮', '来一下', '吃饭啦', '好了', '收到'].map((text) => ({ id: randomId(16), text }))
 }
 
 export type WebRuntimeOptions = { connectMs?: number; retryMs?: number }
@@ -165,13 +160,12 @@ export class WebRuntime {
       }
       case 'save_templates': {
         const templates = structuredClone(args.templates as Template[]).map((t) => ({
-          ...t,
           id: t.id || randomId(16),
-          title: t.title.trim().slice(0, 20),
-          body: t.body.trim(),
+          text: t.text.trim(),
         }))
-        if (templates.length > 30) throw new Error('模板最多 30 个')
-        if (templates.some((t) => !t.title || !t.body)) throw new Error('模板的名称和内容都不能为空')
+        if (templates.length > 10) throw new Error('文案最多 10 条')
+        if (templates.some((t) => !t.text)) throw new Error('文案不能为空')
+        if (templates.some((t) => [...t.text].length > 100)) throw new Error('文案最长 100 个字')
         this.state.templates = templates
         this.#changed()
         return

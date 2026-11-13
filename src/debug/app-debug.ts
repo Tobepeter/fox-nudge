@@ -62,7 +62,7 @@ export class AppDebug implements DebugSurface {
       tokenSource: s.tokenSource,
       keySource: s.keySource,
       connection: s.connection,
-      templates: s.templates.map((t) => t.title),
+      templates: s.templates.map((t) => t.text),
       messages: s.messages.length,
       last: last && {
         id: last.id,

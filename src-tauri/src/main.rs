@@ -216,17 +216,16 @@ fn save_identity(app: tauri::AppHandle, name: String) -> Result<(), String> {
 #[tauri::command]
 fn save_templates(app: tauri::AppHandle, templates: Vec<Template>) -> Result<(), String> {
     if templates.len() > data::TEMPLATE_LIMIT {
-        return Err(format!("模板最多 {} 个", data::TEMPLATE_LIMIT));
+        return Err(format!("文案最多 {} 条", data::TEMPLATE_LIMIT));
     }
     let mut next = vec![];
     for mut t in templates {
-        t.title = t.title.trim().chars().take(20).collect();
-        t.body = t.body.trim().to_string();
-        if t.title.is_empty() || t.body.is_empty() {
-            return Err("模板的名称和内容都不能为空".into());
+        t.text = t.text.trim().to_string();
+        if t.text.is_empty() {
+            return Err("文案不能为空".into());
         }
-        if t.body.chars().count() > data::BODY_LIMIT {
-            return Err(format!("模板内容最长 {} 个字", data::BODY_LIMIT));
+        if t.text.chars().count() > data::TEMPLATE_TEXT_LIMIT {
+            return Err(format!("文案最长 {} 个字", data::TEMPLATE_TEXT_LIMIT));
         }
         if t.id.is_empty() {
             t.id = uuid::Uuid::new_v4().to_string();

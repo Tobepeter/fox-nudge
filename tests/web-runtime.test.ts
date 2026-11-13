@@ -36,7 +36,7 @@ test('首次启动生成身份和默认模板，清除数据后换新身份', as
   const first = await snapshot(rt)
   assert.equal(first.identity.id.length, 12)
   assert.equal(first.identity.name, 'anonymous')
-  assert.equal(first.templates.length, 4)
+  assert.equal(first.templates.length, 5)
   await rt.command('wipe_data')
   assert.notEqual((await snapshot(rt)).identity.id, first.identity.id)
   rt.dispose()
@@ -112,12 +112,14 @@ test('设置校验与改主题重连', async () => {
   rt.dispose()
 })
 
-test('模板校验', async () => {
+test('文案校验：不能为空、最多 10 条、补 ID', async () => {
   const rt = new WebRuntime(initial, { connectMs: 5 })
-  await assert.rejects(rt.command('save_templates', { templates: [{ id: '', title: '', body: 'x' }] }), /不能为空/)
-  await rt.command('save_templates', { templates: [{ id: '', title: '  新的 ', body: ' 内容 ' }] })
+  await assert.rejects(rt.command('save_templates', { templates: [{ id: '', text: '  ' }] }), /不能为空/)
+  const eleven = Array.from({ length: 11 }, (_, i) => ({ id: String(i), text: `t${i}` }))
+  await assert.rejects(rt.command('save_templates', { templates: eleven }), /最多 10 条/)
+  await rt.command('save_templates', { templates: [{ id: '', text: ' 叮 ' }] })
   const [t] = (await snapshot(rt)).templates
-  assert.equal(t.title, '新的')
+  assert.equal(t.text, '叮')
   assert.ok(t.id)
   rt.dispose()
 })
