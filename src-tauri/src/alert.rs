@@ -27,6 +27,23 @@ fn settings(app: &AppHandle) -> (bool, String) {
     (data.settings.notify, data.settings.sound.clone())
 }
 
+fn full_style(app: &AppHandle) -> bool {
+    app.state::<AppState>().data.lock().unwrap().settings.notify_style == "full"
+}
+
+/// 通知的标题和正文。极简只有消息内容（有标题的消息标题在上、正文在下）；详细的标题是发送者昵称
+fn content(message: &Message, full: bool) -> (String, String) {
+    if message.status == "undecryptable" {
+        return ("收到一条无法解密的消息".into(), "共享密钥和发送方不一致，请在设置里核对".into());
+    }
+    match (full, message.title.is_empty()) {
+        (false, true) => (message.body.clone(), String::new()),
+        (false, false) => (message.title.clone(), message.body.clone()),
+        (true, true) => (sender(message), message.body.clone()),
+        (true, false) => (format!("{} · {}", sender(message), message.title), message.body.clone()),
+    }
+}
+
 /// 请前端画头像时带的信息，规则和界面上的 <Avatar> 一致
 #[derive(Clone, Serialize)]
 pub struct AvatarRequest {
@@ -64,14 +81,9 @@ impl AvatarRequest {
 }
 
 pub fn message(app: &AppHandle, message: &Message) {
-    let (title, body) = if message.status == "undecryptable" {
-        ("收到一条无法解密的消息".to_string(), "共享密钥和发送方不一致，请在设置里核对".to_string())
-    } else if message.title.is_empty() {
-        (sender(message), message.body.clone())
-    } else {
-        (format!("{} · {}", sender(message), message.title), message.body.clone())
-    };
-    show(app, &title, &body, Some(AvatarRequest::of(message)));
+    let full = full_style(app);
+    let (title, body) = content(message, full);
+    show(app, &title, &body, full.then(|| AvatarRequest::of(message)));
 }
 
 pub fn backlog(app: &AppHandle, messages: &[Message]) {
@@ -80,12 +92,13 @@ pub fn backlog(app: &AppHandle, messages: &[Message]) {
         [one] => message(app, one),
         many => {
             let last = many.last().unwrap();
-            let preview = if last.status == "ok" {
-                format!("最新一条来自 {}：{}", sender(last), last.body)
-            } else {
-                "其中有无法解密的消息".into()
+            let full = full_style(app);
+            let preview = match (last.status == "ok", full) {
+                (false, _) => "其中有无法解密的消息".to_string(),
+                (true, true) => format!("最新一条来自 {}：{}", sender(last), last.body),
+                (true, false) => format!("最新一条：{}", last.body),
             };
-            show(app, &format!("离线期间收到 {} 条消息", many.len()), &preview, Some(AvatarRequest::of(last)));
+            show(app, &format!("离线期间收到 {} 条消息", many.len()), &preview, full.then(|| AvatarRequest::of(last)));
         }
     }
 }
@@ -225,6 +238,16 @@ mod tests {
             encrypted: true,
             status: "ok".into(),
         }
+    }
+    #[test]
+    fn minimal_shows_only_content() {
+        let mut m = msg(Some("abc"), Some("小明"), Some("lorelei"));
+        m.body = "吃饭啦".into();
+        assert_eq!(content(&m, false), ("吃饭啦".to_string(), String::new()));
+        assert_eq!(content(&m, true), ("小明".to_string(), "吃饭啦".to_string()));
+        m.title = "提醒".into();
+        assert_eq!(content(&m, false), ("提醒".to_string(), "吃饭啦".to_string()));
+        assert_eq!(content(&m, true), ("小明 · 提醒".to_string(), "吃饭啦".to_string()));
     }
     #[test]
     fn avatar_keys_are_file_safe_and_track_names() {

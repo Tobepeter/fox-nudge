@@ -10,6 +10,10 @@ mode: string, pollSeconds: number,
  */
 sound: string, notify: boolean, 
 /**
+ * minimal：通知只显示消息内容；full：标题是发送者昵称，右侧带头像
+ */
+notifyStyle: string, 
+/**
  * window：主窗口打开时显示；always；never
  */
 dockMode: string, theme: string, 

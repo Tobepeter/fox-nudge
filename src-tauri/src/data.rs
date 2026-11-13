@@ -23,6 +23,8 @@ pub struct Settings {
     /// 系统提示音名，none 为静音
     pub sound: String,
     pub notify: bool,
+    /// minimal：通知只显示消息内容；full：标题是发送者昵称，右侧带头像
+    pub notify_style: String,
     /// window：主窗口打开时显示；always；never
     pub dock_mode: String,
     pub theme: String,
@@ -41,6 +43,7 @@ impl Default for Settings {
             poll_seconds: 60,
             sound: "Glass".into(),
             notify: true,
+            notify_style: "minimal".into(),
             dock_mode: "window".into(),
             theme: "system".into(),
             avatar_style: random_style(),
@@ -119,6 +122,9 @@ impl Settings {
         }
         if !matches!(self.mode.as_str(), "stream" | "poll") {
             return Err("未知的订阅方式".into());
+        }
+        if !matches!(self.notify_style.as_str(), "minimal" | "full") {
+            return Err("未知的通知样式".into());
         }
         if !SOUNDS.contains(&self.sound.as_str()) {
             return Err("未知的提示音".into());

@@ -14,12 +14,19 @@ import { ThemeToggle } from './theme-toggle'
 import { Tip } from './tip'
 import { sounds } from '../lib/initial'
 import { ANONYMOUS, cleanName, hasName, NAME_LIMIT } from '../lib/avatar-text'
-import { api, desktop, type Settings as SettingsData, type Snapshot } from '../lib/runtime'
+import {
+  api,
+  desktop,
+  type Settings as SettingsData,
+  type Snapshot,
+} from '../lib/runtime'
 
 // 覆盖型设置的占位：用内置值时只显示「已内置」，不暴露具体内容
-const sourceText = (source: string) => (source === 'builtin' ? '已内置' : '未设置')
+const sourceText = (source: string) =>
+  source === 'builtin' ? '已内置' : '未设置'
 
-const pressed = 'px-3 data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground'
+const pressed =
+  'px-3 data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground'
 
 function Row(props: { label: string; help?: ReactNode; children: ReactNode }) {
   return (
@@ -51,7 +58,10 @@ function TextSetting(props: {
   disabled?: boolean
   maxLength?: number
 }) {
-  const shown = props.fallback !== undefined && props.value === props.fallback ? '' : props.value
+  const shown =
+    props.fallback !== undefined && props.value === props.fallback
+      ? ''
+      : props.value
   const [value, setValue] = useState(shown)
   useEffect(() => setValue(shown), [shown])
   const commit = (next: string) => {
@@ -69,7 +79,8 @@ function TextSetting(props: {
       onClear={() => setValue('')}
       onBlur={() => commit(value)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur()
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing)
+          (e.target as HTMLInputElement).blur()
         if (e.key === 'Escape') setValue(shown)
       }}
     />
@@ -86,7 +97,12 @@ function SecretSetting(props: {
   generate?: boolean
 }) {
   const [value, setValue] = useState('')
-  const placeholder = props.source === 'custom' ? '已设置' : props.source === 'builtin' ? '已内置' : props.empty
+  const placeholder =
+    props.source === 'custom'
+      ? '已设置'
+      : props.source === 'builtin'
+        ? '已内置'
+        : props.empty
   async function save(next: string) {
     if (await props.run(() => api.setSecret(props.kind, next))) setValue('')
   }
@@ -94,7 +110,15 @@ function SecretSetting(props: {
     <>
       {props.generate && !value && (
         <Tip content='生成'>
-          <Button variant='ghost' size='icon' aria-label='生成' disabled={props.disabled} onClick={() => void props.run(async () => setValue(await api.generateKey()))}>
+          <Button
+            variant='ghost'
+            size='icon'
+            aria-label='生成'
+            disabled={props.disabled}
+            onClick={() =>
+              void props.run(async () => setValue(await api.generateKey()))
+            }
+          >
             <Dices />
           </Button>
         </Tip>
@@ -108,7 +132,9 @@ function SecretSetting(props: {
             onClick={() =>
               void navigator.clipboard
                 .writeText(value)
-                .then(() => toast.success('已复制', { id: 'copy-key', duration: 1500 }))
+                .then(() =>
+                  toast.success('已复制', { id: 'copy-key', duration: 1500 }),
+                )
                 .catch(() => toast.error('复制失败', { id: 'copy-key' }))
             }
           >
@@ -117,12 +143,20 @@ function SecretSetting(props: {
         </Tip>
       )}
       {value.trim() ? (
-        <Button variant='ghost' disabled={props.disabled} onClick={() => void save(value)}>
+        <Button
+          variant='ghost'
+          disabled={props.disabled}
+          onClick={() => void save(value)}
+        >
           保存
         </Button>
       ) : (
         props.source === 'custom' && (
-          <Button variant='ghost' disabled={props.disabled} onClick={() => void save('')}>
+          <Button
+            variant='ghost'
+            disabled={props.disabled}
+            onClick={() => void save('')}
+          >
             恢复内置
           </Button>
         )
@@ -155,7 +189,11 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const preview = (sound: string) => {
     clearTimeout(timer.current)
-    if (sound !== 'none') timer.current = setTimeout(() => void api.testSound(sound).catch(() => {}), 150)
+    if (sound !== 'none')
+      timer.current = setTimeout(
+        () => void api.testSound(sound).catch(() => {}),
+        150,
+      )
   }
   useEffect(() => () => clearTimeout(timer.current), [])
   return (
@@ -170,7 +208,10 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
             onSave={(name) => void run(() => api.saveIdentity(cleanName(name)))}
           />
         </Row>
-        <Row label='头像' help={named ? undefined : '设了昵称后可以用名字当头像'}>
+        <Row
+          label='头像'
+          help={named ? undefined : '设了昵称后可以用名字当头像'}
+        >
           <AvatarPicker
             id={snapshot.identity.id}
             name={snapshot.identity.name}
@@ -193,13 +234,46 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
             }}
           />
         </Row>
+        <Row
+          label='通知样式'
+          help='极简只显示消息内容；详细的标题是发送者昵称，右侧带头像（开发版不显示头像）'
+        >
+          <ToggleGroup
+            value={[settings.notifyStyle]}
+            onValueChange={([notifyStyle]) =>
+              notifyStyle && set({ notifyStyle })
+            }
+            variant='outline'
+            size='sm'
+            spacing={0}
+            disabled={disabled || !settings.notify}
+          >
+            <ToggleGroupItem value='minimal' className={pressed}>
+              极简
+            </ToggleGroupItem>
+            <ToggleGroupItem value='full' className={pressed}>
+              详细
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </Row>
         <Row label='提示音'>
-          <Choice label='提示音' value={settings.sound} options={sounds} onChange={(sound) => set({ sound })} onHover={preview} disabled={disabled} />
+          <Choice
+            label='提示音'
+            value={settings.sound}
+            options={sounds}
+            onChange={(sound) => set({ sound })}
+            onHover={preview}
+            disabled={disabled}
+          />
         </Row>
       </Section>
       <Section title='桌面'>
         <Row label='外观'>
-          <ThemeToggle value={settings.theme} disabled={disabled} onChange={(theme) => set({ theme })} />
+          <ThemeToggle
+            value={settings.theme}
+            disabled={disabled}
+            onChange={(theme) => set({ theme })}
+          />
         </Row>
         <Row label='Dock 图标'>
           <Choice
@@ -214,8 +288,15 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
             disabled={disabled}
           />
         </Row>
-        <Row label='登录时启动' help={snapshot.dev ? '开发版不注册' : undefined}>
-          <Switch checked={settings.launchAtLogin} disabled={disabled || snapshot.dev} onCheckedChange={(launchAtLogin) => set({ launchAtLogin })} />
+        <Row
+          label='登录时启动'
+          help={snapshot.dev ? '开发版不注册' : undefined}
+        >
+          <Switch
+            checked={settings.launchAtLogin}
+            disabled={disabled || snapshot.dev}
+            onCheckedChange={(launchAtLogin) => set({ launchAtLogin })}
+          />
         </Row>
       </Section>
     </>
@@ -228,25 +309,55 @@ function Advanced({ snapshot, disabled, set, run }: PanelProps) {
     <>
       <Section title='服务器'>
         <Row label='地址'>
-          <TextSetting value={settings.server} placeholder={sourceText(snapshot.serverSource)} disabled={disabled} onSave={(server) => set({ server })} />
+          <TextSetting
+            value={settings.server}
+            placeholder={sourceText(snapshot.serverSource)}
+            disabled={disabled}
+            onSave={(server) => set({ server })}
+          />
         </Row>
         <Row label='主题' help='同一主题的设备都会收到'>
-          <TextSetting value={settings.topic} placeholder={sourceText(snapshot.topicSource)} maxLength={64} disabled={disabled} onSave={(topic) => set({ topic })} />
+          <TextSetting
+            value={settings.topic}
+            placeholder={sourceText(snapshot.topicSource)}
+            maxLength={64}
+            disabled={disabled}
+            onSave={(topic) => set({ topic })}
+          />
         </Row>
         <Row label='访问令牌'>
-          <SecretSetting kind='token' source={snapshot.tokenSource} empty='tk_…' disabled={disabled} run={run} />
+          <SecretSetting
+            kind='token'
+            source={snapshot.tokenSource}
+            empty='tk_…'
+            disabled={disabled}
+            run={run}
+          />
         </Row>
-        <Row label='订阅方式' help='长连接实时收到；轮询定时拉取，长连接不稳时用'>
+        <Row
+          label='订阅方式'
+          help='长连接实时收到；轮询定时拉取，长连接不稳时用'
+        >
           {settings.mode === 'poll' && (
             <Choice
               label='轮询间隔'
               value={String(settings.pollSeconds)}
-              options={[30, 60, 120, 300].map((s) => ({ value: String(s), label: s < 60 ? `${s} 秒` : `${s / 60} 分钟` }))}
+              options={[30, 60, 120, 300].map((s) => ({
+                value: String(s),
+                label: s < 60 ? `${s} 秒` : `${s / 60} 分钟`,
+              }))}
               onChange={(v) => set({ pollSeconds: Number(v) })}
               disabled={disabled}
             />
           )}
-          <ToggleGroup value={[settings.mode]} onValueChange={([mode]) => mode && set({ mode })} variant='outline' size='sm' spacing={0} disabled={disabled}>
+          <ToggleGroup
+            value={[settings.mode]}
+            onValueChange={([mode]) => mode && set({ mode })}
+            variant='outline'
+            size='sm'
+            spacing={0}
+            disabled={disabled}
+          >
             <ToggleGroupItem value='stream' className={pressed}>
               长连接
             </ToggleGroupItem>
@@ -258,18 +369,37 @@ function Advanced({ snapshot, disabled, set, run }: PanelProps) {
       </Section>
       <Section title='加密'>
         <Row label='加密' help='关掉后以明文经过服务器'>
-          <Switch checked={settings.encrypt} disabled={disabled} onCheckedChange={(encrypt) => set({ encrypt })} />
+          <Switch
+            checked={settings.encrypt}
+            disabled={disabled}
+            onCheckedChange={(encrypt) => set({ encrypt })}
+          />
         </Row>
         <Row label='共享密钥' help='每台电脑填同一个'>
-          <SecretSetting kind='key' source={snapshot.keySource} empty='粘贴或生成' disabled={disabled} run={run} generate />
+          <SecretSetting
+            kind='key'
+            source={snapshot.keySource}
+            empty='粘贴或生成'
+            disabled={disabled}
+            run={run}
+            generate
+          />
         </Row>
       </Section>
       <Section title='维护'>
         <div className='flex flex-wrap gap-2 pt-1'>
-          <Button variant='outline' disabled={!desktop} onClick={() => void run(api.openLogs)}>
+          <Button
+            variant='outline'
+            disabled={!desktop}
+            onClick={() => void run(api.openLogs)}
+          >
             打开调试日志
           </Button>
-          <Button variant='outline' disabled={disabled} onClick={() => void run(api.reconnect)}>
+          <Button
+            variant='outline'
+            disabled={disabled}
+            onClick={() => void run(api.reconnect)}
+          >
             重新连接
           </Button>
           <ConfirmAction
@@ -285,7 +415,11 @@ function Advanced({ snapshot, disabled, set, run }: PanelProps) {
             success='已清除全部数据'
             disabled={disabled}
             trigger={
-              <Button variant='outline' className='text-destructive' disabled={disabled}>
+              <Button
+                variant='outline'
+                className='text-destructive'
+                disabled={disabled}
+              >
                 清除数据
               </Button>
             }
@@ -314,7 +448,14 @@ export function Settings(props: {
     <div className='max-w-xl space-y-5 pb-4'>
       <div className='flex items-center justify-between'>
         <h2 className='font-medium'>设置</h2>
-        <ToggleGroup value={[tab]} onValueChange={([next]) => next && setTab(next)} variant='outline' size='sm' spacing={0} aria-label='设置分页'>
+        <ToggleGroup
+          value={[tab]}
+          onValueChange={([next]) => next && setTab(next)}
+          variant='outline'
+          size='sm'
+          spacing={0}
+          aria-label='设置分页'
+        >
           <ToggleGroupItem value='general' className={pressed}>
             通用
           </ToggleGroupItem>

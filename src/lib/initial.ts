@@ -10,6 +10,7 @@ export const initial: Snapshot = {
     pollSeconds: 60,
     sound: 'Glass',
     notify: true,
+    notifyStyle: 'minimal',
     dockMode: 'window',
     theme: 'system',
     avatarStyle: 'beam',
