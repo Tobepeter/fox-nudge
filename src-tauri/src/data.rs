@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, sync::OnceLock};
 
 pub const HISTORY_LIMIT: usize = 300;
+/// 历史最多保留的天数，超过的自动清掉
+pub const HISTORY_DAYS: i64 = 30;
 pub const TEMPLATE_LIMIT: usize = 10;
 pub const TEMPLATE_TEXT_LIMIT: usize = 100;
 pub const NAME_LIMIT: usize = 16;
@@ -191,6 +193,8 @@ pub struct Data {
     pub messages: Vec<Message>,
     /// 最近收到的 ntfy 消息 ID，重连时作为 since 补收
     pub last_id: Option<String>,
+    /// 「最近发过」只显示这个时间（秒）之后发的；清空最近只改它，不删历史
+    pub recent_cleared_at: i64,
 }
 impl Default for Data {
     fn default() -> Self {
@@ -200,6 +204,7 @@ impl Default for Data {
             templates: default_templates(),
             messages: vec![],
             last_id: None,
+            recent_cleared_at: 0,
         }
     }
 }
@@ -224,9 +229,16 @@ impl Data {
             .position(|m| m.time > message.time)
             .unwrap_or(self.messages.len());
         self.messages.insert(at, message);
+        self.prune(chrono::Utc::now().timestamp());
+        true
+    }
+
+    /// 淘汰：先去掉超过 30 天的，再只留最近 300 条（按时间排序，最旧的在前）
+    pub fn prune(&mut self, now: i64) {
+        let oldest = now - HISTORY_DAYS * 24 * 3600;
+        self.messages.retain(|m| m.time >= oldest);
         let excess = self.messages.len().saturating_sub(HISTORY_LIMIT);
         self.messages.drain(..excess);
-        true
     }
 }
 
@@ -254,6 +266,7 @@ pub fn read() -> Data {
             Ok(mut data) => {
                 // 旧版本把默认地址和主题写进了数据，和内置值相同的转成“用内置”
                 data.settings.normalize();
+                data.prune(chrono::Utc::now().timestamp());
                 if data.identity.id.is_empty() {
                     data.identity = Identity::fresh();
                 }
@@ -338,16 +351,26 @@ mod tests {
     #[test]
     fn messages_dedupe_and_sort() {
         let mut data = Data::default();
-        assert!(data.push_message(message("b", 2)));
-        assert!(data.push_message(message("a", 1)));
-        assert!(!data.push_message(message("a", 1)));
+        let t = chrono::Utc::now().timestamp();
+        assert!(data.push_message(message("b", t + 2)));
+        assert!(data.push_message(message("a", t + 1)));
+        assert!(!data.push_message(message("a", t + 1)));
         assert_eq!(data.messages.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+    }
+    #[test]
+    fn history_drops_old_messages() {
+        let now = 100 * 24 * 3600;
+        let mut data = Data::default();
+        data.messages = vec![message("old", now - 31 * 24 * 3600), message("new", now - 24 * 3600)];
+        data.prune(now);
+        assert_eq!(data.messages.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["new"]);
     }
     #[test]
     fn history_is_capped() {
         let mut data = Data::default();
+        let base = chrono::Utc::now().timestamp() - 3600;
         for i in 0..(HISTORY_LIMIT as i64 + 5) {
-            data.push_message(message(&i.to_string(), i));
+            data.push_message(message(&i.to_string(), base + i));
         }
         assert_eq!(data.messages.len(), HISTORY_LIMIT);
         assert_eq!(data.messages[0].id, "5");

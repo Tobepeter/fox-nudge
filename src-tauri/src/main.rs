@@ -35,6 +35,7 @@ struct Snapshot {
     topic_source: String,
     token_source: String,
     key_source: String,
+    recent_cleared_at: i64,
     version: String,
     dev: bool,
 }
@@ -81,6 +82,7 @@ fn snapshot(app: &tauri::AppHandle) -> Snapshot {
             "none"
         }
         .into(),
+        recent_cleared_at: data.recent_cleared_at,
         version: env!("CARGO_PKG_VERSION").into(),
         dev: cfg!(debug_assertions),
     }
@@ -294,6 +296,14 @@ fn reconnect(app: tauri::AppHandle) {
     app.state::<AppState>().hub.restart("manual");
 }
 
+/// 清空「最近发过」：只记下时间点，历史不删；撤销时传回原来的时间点
+#[tauri::command]
+fn set_recent_cleared(app: tauri::AppHandle, at: i64) -> Result<(), String> {
+    save(&app, |d| d.recent_cleared_at = at)?;
+    notify(&app);
+    Ok(())
+}
+
 #[tauri::command]
 fn clear_history(app: tauri::AppHandle) -> Result<(), String> {
     save(&app, |d| d.messages.clear())?;
@@ -383,6 +393,7 @@ fn main() {
         send,
         reconnect,
         clear_history,
+        set_recent_cleared,
         wipe_data,
         open_logs,
         test_sound,
@@ -391,6 +402,7 @@ fn main() {
         debug::debug_reply,
         debug::debug_inject,
         debug::debug_disconnect,
+        debug::debug_fill_history,
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -405,6 +417,7 @@ fn main() {
         send,
         reconnect,
         clear_history,
+        set_recent_cleared,
         wipe_data,
         open_logs,
         test_sound,

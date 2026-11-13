@@ -31,6 +31,7 @@ export const initial: Snapshot = {
   topicSource: 'none',
   tokenSource: 'none',
   keySource: 'none',
+  recentClearedAt: 0,
   version: '',
   dev: false,
 }

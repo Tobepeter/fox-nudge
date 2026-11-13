@@ -11,6 +11,7 @@ import {
   GripVertical,
   Loader2,
   Pencil,
+  Pin,
   Plus,
   SendHorizontal,
   Trash2,
@@ -40,11 +41,14 @@ import { ConfirmAction } from './confirm-action'
 import { ConnectionStatus } from './connection-status'
 import { Tip } from './tip'
 import { UndoNotice, type PendingUndo } from './undo-notice'
+import { recentSent } from '../lib/recent'
 import type { Snapshot, Template } from '../lib/runtime'
 
 const LIMIT = 10
 const TEXT_LIMIT = 100
 const UNDO_MS = 5000
+// 通知里的文案太长时截短
+const short = (text: string) => ([...text].length > 12 ? `${[...text].slice(0, 12).join('')}…` : text)
 const SENT_MS = 1200
 // 只允许上下拖
 const vertical: Modifier = ({ transform }) => ({ ...transform, x: 0 })
@@ -164,14 +168,9 @@ function Row(props: {
                 <Trash2 />
               </Button>
             </Tip>
-          ) : status === 'sending' ? (
-            <Loader2
-              className='size-4 animate-spin text-muted-foreground'
-              aria-label='发送中'
-            />
-          ) : status === 'sent' ? (
-            <Check className='size-4 text-success' aria-label='已发送' />
-          ) : null
+          ) : (
+            <SendStatus status={status} />
+          )
         }
       >
         {props.editing ? (
@@ -190,6 +189,19 @@ function Row(props: {
   )
 }
 
+function SendStatus({ status }: { status: 'sending' | 'sent' | null }) {
+  if (status === 'sending')
+    return (
+      <Loader2
+        className='size-4 animate-spin text-muted-foreground'
+        aria-label='发送中'
+      />
+    )
+  if (status === 'sent')
+    return <Check className='size-4 text-success' aria-label='已发送' />
+  return null
+}
+
 export function Compose(props: {
   snapshot: Snapshot
   draft: string
@@ -198,6 +210,7 @@ export function Compose(props: {
   send: (body: string) => Promise<boolean>
   saveTemplates: (templates: Template[]) => Promise<boolean>
   resetTemplates: () => Promise<boolean>
+  setRecentCleared: (at: number) => Promise<boolean>
   editing: boolean
   setEditing: (value: boolean) => void
   reconnect: () => void
@@ -265,7 +278,7 @@ export function Compose(props: {
     save(items.filter((t) => t.id !== item.id))
     setUndo({
       key: `${item.id}-${Date.now()}`,
-      label: `已删除「${item.text}」`,
+      label: `已删除「${short(item.text)}」`,
       expiresAt: Date.now() + UNDO_MS,
       undo: () => {
         const current = latest.current
@@ -298,6 +311,32 @@ export function Compose(props: {
     if (await send('draft', props.draft)) props.setDraft('')
   }
   const draftStatus = feedback?.id === 'draft' ? feedback.state : null
+  const recent = recentSent(snapshot, items)
+  // 固定：加到文案末尾；已满 10 条时顶掉最后一条。撤销恢复固定前的整份文案快照
+  function pin(text: string) {
+    const before = latest.current
+    const bumped = before.length >= LIMIT ? before[before.length - 1] : null
+    const kept = bumped ? before.slice(0, LIMIT - 1) : before
+    save([...kept, { id: crypto.randomUUID(), text }])
+    setUndo({
+      key: `pin-${Date.now()}`,
+      label: bumped
+        ? `已固定「${short(text)}」，移出「${short(bumped.text)}」`
+        : `已固定「${short(text)}」`,
+      expiresAt: Date.now() + UNDO_MS,
+      undo: () => save(before),
+    })
+  }
+  function clearRecent() {
+    const previous = snapshot.recentClearedAt
+    void props.setRecentCleared(Math.floor(Date.now() / 1000))
+    setUndo({
+      key: `recent-${Date.now()}`,
+      label: '已清空最近发过',
+      expiresAt: Date.now() + UNDO_MS,
+      undo: () => void props.setRecentCleared(previous),
+    })
+  }
   return (
     <section className='flex min-h-0 flex-1 flex-col gap-4'>
       <UndoNotice pending={undo} onExpire={clearUndo} />
@@ -399,6 +438,56 @@ export function Compose(props: {
                 </Button>
               )}
             </Line>
+          )}
+          {/* 最近发过：自己发过的自定义消息，单击重发；清空只隐藏，不删历史，5 秒内可撤销 */}
+          {!editing && recent.length > 0 && (
+            <section className='space-y-1.5 pt-4'>
+              <Line>
+                <div className='flex min-w-0 flex-1 items-center justify-between'>
+                  <h3 className='text-muted-foreground'>最近发过</h3>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='text-muted-foreground'
+                    onClick={clearRecent}
+                  >
+                    清空
+                  </Button>
+                </div>
+              </Line>
+              <ul className='space-y-1.5'>
+                {recent.map((text) => {
+                  const id = `recent:${text}`
+                  const status = feedback?.id === id ? feedback.state : null
+                  return (
+                    <li key={id}>
+                      <Line
+                        side={<SendStatus status={status} />}
+                        handle={
+                          <Tip content='固定为文案'>
+                            <button
+                              aria-label='固定为文案'
+                              className='flex size-8 items-center justify-center rounded-md text-muted-foreground/50 hover:bg-muted hover:text-foreground'
+                              onClick={() => pin(text)}
+                            >
+                              <Pin className='size-4' />
+                            </button>
+                          </Tip>
+                        }
+                      >
+                        <Button
+                          variant='outline'
+                          className={`${FIELD} justify-start bg-transparent text-muted-foreground shadow-none hover:text-foreground`}
+                          onClick={() => void send(id, text)}
+                        >
+                          <span className='truncate'>{text}</span>
+                        </Button>
+                      </Line>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
           )}
         </div>
       </div>

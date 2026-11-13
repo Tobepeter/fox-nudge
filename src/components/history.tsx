@@ -27,7 +27,7 @@ export function History(props: {
         <div className='flex items-center gap-0.5'>
           <h2 className='font-medium'>历史</h2>
           <HelpTip label='历史保留规则'>
-            只保留最近 300 条，更早的自动清掉；只存在这台电脑上
+            只保留 30 天内、最近 300 条，更早的自动清掉；只存在这台电脑上
           </HelpTip>
         </div>
         {props.messages.length > 0 && (

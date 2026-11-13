@@ -26,6 +26,7 @@ const initial: Snapshot = {
   topicSource: 'none',
   tokenSource: 'none',
   keySource: 'none',
+  recentClearedAt: 0,
   version: '0.1.0',
   dev: false,
 }

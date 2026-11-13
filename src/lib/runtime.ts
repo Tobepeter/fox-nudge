@@ -63,6 +63,7 @@ export const api = {
   send: (title: string, body: string) => call<Message>('send', { title, body }),
   reconnect: () => call('reconnect'),
   clearHistory: () => call('clear_history'),
+  setRecentCleared: (at: number) => call('set_recent_cleared', { at }),
   wipeData: () => call('wipe_data'),
   openLogs: () => call('open_logs'),
   testSound: (sound: string) => call('test_sound', { sound }),
@@ -74,6 +75,8 @@ export const api = {
     import.meta.env.DEV ? call<string>('debug_inject', { message }) : Promise.reject(new Error('仅开发版可用')),
   debugDisconnect: () =>
     import.meta.env.DEV ? call('debug_disconnect') : Promise.reject(new Error('仅开发版可用')),
+  debugFillHistory: (count: number) =>
+    import.meta.env.DEV ? call<number>('debug_fill_history', { count }) : Promise.reject(new Error('仅开发版可用')),
 }
 
 export const events = {

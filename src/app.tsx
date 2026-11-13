@@ -194,6 +194,7 @@ export function App() {
               send={send}
               saveTemplates={(templates) => run(() => api.saveTemplates(templates))}
               resetTemplates={() => run(api.resetTemplates)}
+              setRecentCleared={(at) => run(() => api.setRecentCleared(at))}
               editing={editing}
               setEditing={setEditing}
               reconnect={() => void run(api.reconnect)}

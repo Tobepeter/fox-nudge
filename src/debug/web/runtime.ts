@@ -138,11 +138,17 @@ export class WebRuntime {
     })
   }
 
+  // 和 Rust 一致：超过 30 天的去掉，再只留最近 300 条
+  #prune() {
+    const oldest = Math.floor(Date.now() / 1000) - 30 * 86400
+    this.state.messages = this.state.messages.filter((m) => m.time >= oldest).slice(-300)
+  }
+
   #push(message: Message, announce = true) {
     if (this.state.messages.some((m) => m.id === message.id)) return false
     this.state.messages.push(message)
     this.state.messages.sort((a, b) => a.time - b.time)
-    this.state.messages = this.state.messages.slice(-300)
+    this.#prune()
     if (announce) this.#emit('message', message)
     this.#changed()
     return true
@@ -252,6 +258,37 @@ export class WebRuntime {
       case 'reconnect':
         this.#connect()
         return
+      case 'set_recent_cleared':
+        this.state.recentClearedAt = Number(args.at)
+        this.#changed()
+        return
+      case 'debug_fill_history': {
+        const texts = ['叮', '来一下', '吃饭啦', '好了', '收到', '马上到', '在吗', '下午三点开会别忘了', '构建完成，可以看了', '帮我看下这个报错', '今天早点走', '快递到了', '喝水', '会议改到明天上午', '这是一条比较长的消息，用来看历史里一行放不下的时候怎么截断显示，后面还有很多字']
+        const senders = [['debug-xiaoming', '小明', 'name'], ['debug-ahu', '阿狐', 'openPeeps'], ['debug-lucy', 'Lucy', 'notionists'], ['debug-tobe', 'tobe', 'lorelei']]
+        const now = Math.floor(Date.now() / 1000)
+        const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)]
+        for (let i = 0; i < Number(args.count); i++) {
+          const roll = Math.floor(Math.random() * 10)
+          const [senderId, senderName, senderAvatar] =
+            roll < 3 ? [this.state.identity.id, this.state.identity.name, this.state.settings.avatarStyle] : roll === 3 ? [null, null, null] : pick(senders)
+          this.state.messages.push({
+            id: `debug-fill-${randomId(8)}-${i}`,
+            time: now - 60 - Math.floor(Math.random() * (30 * 86400 - 3660)),
+            title: '',
+            body: pick(texts),
+            senderId,
+            senderName,
+            senderAvatar,
+            mine: roll < 3,
+            encrypted: true,
+            status: 'ok',
+          })
+        }
+        this.state.messages.sort((a, b) => a.time - b.time)
+        this.#prune()
+        this.#changed()
+        return this.state.messages.length
+      }
       case 'clear_history':
         this.state.messages = []
         this.#changed()
