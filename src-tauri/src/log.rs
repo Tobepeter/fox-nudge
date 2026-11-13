@@ -1,48 +1,53 @@
-//! 诊断日志：每行一个 JSON，写入前脱敏，按分钟限流，按大小轮转
-//! 设计照 MediaCrawler Studio 的 StudioLogger，dev 与正式版分文件
+//! 诊断日志：写文件和轮转交给官方 tauri-plugin-log，这里只做两件事：
+//! 写入前脱敏，以及把每条日志统一成一行 JSON（time / level / source / event / detail）
 use serde_json::{json, Map, Value};
-use std::{
-    fs,
-    io::Write,
-    path::PathBuf,
-    sync::{Mutex, OnceLock},
-};
+use std::{path::PathBuf, sync::OnceLock};
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
-const MAX_BYTES: u64 = 5 * 1024 * 1024;
-const MAX_FILES: usize = 5;
-const MAX_PER_MINUTE: u32 = 120;
-const MAX_LINE: usize = 32 * 1024;
-const NAME: &str = if cfg!(debug_assertions) {
-    "fox-nudge-dev"
-} else {
-    "fox-nudge"
-};
+const NAME: &str = if cfg!(debug_assertions) { "fox-nudge-dev" } else { "fox-nudge" };
+/// 我们自己的结构化日志走这个 target，其余是依赖库的日志
+const TARGET: &str = "fox_nudge::diag";
+const MAX_DETAIL: usize = 32 * 1024;
 
-struct Logger {
-    dir: PathBuf,
-    minute: i64,
-    count: u32,
-    dropped: u32,
-    warned: bool,
+static DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// 单文件 5 MB，保留最近 5 份（旧文件按日期改名）；依赖库只记 warn 以上
+pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri_plugin_log::Builder::new()
+        .clear_targets()
+        .target(Target::new(TargetKind::LogDir { file_name: Some(NAME.into()) }))
+        .max_file_size(5 * 1024 * 1024)
+        .rotation_strategy(RotationStrategy::KeepSome(5))
+        .timezone_strategy(TimezoneStrategy::UseUtc)
+        .level(::log::LevelFilter::Warn)
+        .level_for("fox_nudge", ::log::LevelFilter::Info)
+        .format(|out, message, record| {
+            let head = json!({
+                "time": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                "level": record.level().as_str().to_lowercase(),
+            })
+            .to_string();
+            let body = if record.target() == TARGET {
+                message.to_string()
+            } else {
+                json!({ "source": record.target(), "event": "log", "detail": { "text": redact_text(&message.to_string()) } }).to_string()
+            };
+            // 两个对象拼成一个：去掉 head 的右括号和 body 的左括号
+            out.finish(format_args!("{},{}", &head[..head.len() - 1], &body[1..]))
+        })
+        .build()
 }
 
-static LOGGER: OnceLock<Mutex<Logger>> = OnceLock::new();
-
+/// 记下日志目录给「打开调试日志」和「清除数据」用，并把 panic 也写进日志
 pub fn init(dir: PathBuf) {
-    let _ = LOGGER.set(Mutex::new(Logger {
-        dir,
-        minute: 0,
-        count: 0,
-        dropped: 0,
-        warned: false,
-    }));
+    let _ = DIR.set(dir);
     std::panic::set_hook(Box::new(|info| {
         error("main", "panic", json!({ "message": info.to_string() }));
     }));
 }
 
 pub fn dir() -> Option<PathBuf> {
-    LOGGER.get().map(|l| l.lock().unwrap().dir.clone())
+    DIR.get().cloned()
 }
 
 pub fn info(source: &str, event: &str, detail: Value) {
@@ -56,66 +61,20 @@ pub fn error(source: &str, event: &str, detail: Value) {
 }
 
 pub fn write(level: &str, source: &str, event: &str, detail: Value) {
-    let Some(logger) = LOGGER.get() else { return };
-    let Ok(mut logger) = logger.lock() else { return };
-    let minute = chrono::Utc::now().timestamp() / 60;
-    if logger.minute != minute {
-        logger.minute = minute;
-        logger.count = 0;
-        let dropped = std::mem::take(&mut logger.dropped);
-        if dropped > 0 {
-            let _ = logger.append("warn", "logger", "rate-limited", json!({ "count": dropped }));
-        }
+    let level = match level {
+        "info" => ::log::Level::Info,
+        "warn" => ::log::Level::Warn,
+        _ => ::log::Level::Error,
+    };
+    let mut entry = json!({
+        "source": truncate(&redact_text(source), 80),
+        "event": truncate(&redact_text(event), 120),
+        "detail": redact(detail),
+    });
+    if entry.to_string().len() > MAX_DETAIL {
+        entry["detail"] = json!({ "truncated": true });
     }
-    logger.count += 1;
-    if logger.count > MAX_PER_MINUTE {
-        logger.dropped += 1;
-        return;
-    }
-    if logger.append(level, source, event, detail).is_err() && !logger.warned {
-        // 磁盘故障不影响业务，也不把未脱敏的内容打到控制台
-        logger.warned = true;
-        eprintln!("FoxNudge: diagnostic log unavailable");
-    }
-}
-
-impl Logger {
-    fn file(&self, index: usize) -> PathBuf {
-        if index == 0 {
-            self.dir.join(format!("{NAME}.log"))
-        } else {
-            self.dir.join(format!("{NAME}.{index}.log"))
-        }
-    }
-    fn append(&mut self, level: &str, source: &str, event: &str, detail: Value) -> std::io::Result<()> {
-        let level = if matches!(level, "info" | "warn" | "error") { level } else { "error" };
-        let mut entry = json!({
-            "time": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-            "level": level,
-            "source": truncate(&redact_text(source), 80),
-            "event": truncate(&redact_text(event), 120),
-            "detail": redact(detail),
-        });
-        let mut line = entry.to_string();
-        if line.len() > MAX_LINE {
-            entry["detail"] = json!({ "truncated": true });
-            line = entry.to_string();
-        }
-        fs::create_dir_all(&self.dir)?;
-        let size = fs::metadata(self.file(0)).map(|m| m.len()).unwrap_or(0);
-        if size + line.len() as u64 + 1 > MAX_BYTES {
-            let _ = fs::remove_file(self.file(MAX_FILES - 1));
-            for i in (0..MAX_FILES - 1).rev() {
-                let _ = fs::rename(self.file(i), self.file(i + 1));
-            }
-        }
-        let mut options = fs::OpenOptions::new();
-        options.create(true).append(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let mut file = options.open(self.file(0))?;
-        writeln!(file, "{line}")
-    }
+    ::log::log!(target: TARGET, level, "{entry}");
 }
 
 fn truncate(text: &str, max: usize) -> String {
@@ -148,7 +107,7 @@ pub fn redact(value: Value) -> Value {
     }
 }
 
-// ntfy 访问令牌形如 tk_ 加 29 位字母数字，出现在任意字符串里都替换
+// ntfy 访问令牌形如 tk_ 加 29 位字母数字，出现在任意字符串里都替换；Bearer 后面的值也替换
 pub fn redact_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let bytes = text.as_bytes();

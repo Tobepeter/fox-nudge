@@ -364,6 +364,7 @@ fn main() {
             let handle = app.clone();
             let _ = app.run_on_main_thread(move || show(&handle));
         }))
+        .plugin(log::plugin())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
