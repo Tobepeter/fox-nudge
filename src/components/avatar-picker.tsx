@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import { Avatar } from './avatar'
 import { HelpTip } from './help-tip'
 import { AVATAR_CREDITS, AVATAR_STYLES, styleLabel } from '../lib/avatar-styles'
+
+const SIZE = 36
 
 const credits = (
   <span>
@@ -11,7 +13,7 @@ const credits = (
   </span>
 )
 
-// 点当前头像打开弹窗，全部风格用自己的设备 ID 预览，点一下即选中并关闭
+// 点当前头像打开弹窗：8 列一屏放下全部风格，不滚动；点一下即选中并关闭
 export function AvatarPicker(props: {
   id: string
   name: string
@@ -21,6 +23,8 @@ export function AvatarPicker(props: {
   onChange: (value: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  // 打开时聚焦当前选中的头像，避免焦点落到标题旁的问号上把提示弹出来
+  const selected = useRef<HTMLButtonElement>(null)
   const options = ['name', ...AVATAR_STYLES]
   return (
     <>
@@ -33,40 +37,44 @@ export function AvatarPicker(props: {
         <Avatar id={props.id} name={props.name} avatar={props.value} size={32} />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className='flex max-h-[80vh] flex-col sm:max-w-lg'>
-          <DialogHeader className='shrink-0'>
+        <DialogContent className='sm:max-w-fit' initialFocus={selected}>
+          <DialogHeader>
             <DialogTitle className='flex items-center gap-0.5'>
               选择头像
               <HelpTip label='头像版权'>{credits}</HelpTip>
             </DialogTitle>
           </DialogHeader>
-          <div className='app-scroll -mx-4 min-h-0 flex-1 overflow-y-auto px-4' role='radiogroup' aria-label='头像'>
-            <div className='grid grid-cols-6 gap-2 pb-1'>
-              {options.map((value) => {
-                const off = value === 'name' && !props.named
-                const checked = props.value === value
-                return (
-                  <button
-                    key={value}
-                    role='radio'
-                    aria-checked={checked}
-                    aria-label={value === 'name' ? '名字' : styleLabel(value)}
-                    disabled={off}
-                    onClick={() => {
-                      props.onChange(value)
-                      setOpen(false)
-                    }}
-                    className={`flex aspect-square items-center justify-center rounded-xl ring-2 transition-shadow disabled:opacity-40 ${checked ? 'ring-primary' : 'ring-transparent enabled:hover:bg-muted'}`}
-                  >
-                    {off ? (
-                      <span className='flex size-12 items-center justify-center rounded-full border border-dashed text-muted-foreground'>名</span>
-                    ) : (
-                      <Avatar id={props.id} name={props.name} avatar={value} size={48} />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
+          <div className='grid grid-cols-8 gap-1.5 p-0.5' role='radiogroup' aria-label='头像'>
+            {options.map((value) => {
+              const off = value === 'name' && !props.named
+              const checked = props.value === value
+              return (
+                <button
+                  key={value}
+                  ref={checked ? selected : undefined}
+                  role='radio'
+                  aria-checked={checked}
+                  aria-label={value === 'name' ? '名字' : styleLabel(value)}
+                  disabled={off}
+                  onClick={() => {
+                    props.onChange(value)
+                    setOpen(false)
+                  }}
+                  className={`rounded-full p-0.5 ring-2 transition-shadow focus-visible:outline-none disabled:opacity-40 ${checked ? 'ring-primary' : 'ring-transparent enabled:hover:ring-border focus-visible:ring-border'}`}
+                >
+                  {off ? (
+                    <span
+                      className='flex items-center justify-center rounded-full border border-dashed text-muted-foreground'
+                      style={{ width: SIZE, height: SIZE }}
+                    >
+                      名
+                    </span>
+                  ) : (
+                    <Avatar id={props.id} name={props.name} avatar={value} size={SIZE} />
+                  )}
+                </button>
+              )
+            })}
           </div>
         </DialogContent>
       </Dialog>
