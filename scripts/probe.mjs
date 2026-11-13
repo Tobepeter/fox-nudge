@@ -16,7 +16,7 @@ const expressions = {
   disconnect: `${app}.actions.disconnect()`,
   wait: `${app}.actions.waitConnected(${Number(text) || 15000})`,
   navigate: `(async () => { ${app}.actions.navigate(${JSON.stringify(text || 'send')}); return ${app}.snapshot() })()`,
-  reload: `(location.reload(), true)`,
+  reload: `(setTimeout(() => location.reload(), 50), true)`,
 }
 const expression = expressions[command]
 if (!expression) {
