@@ -19,7 +19,8 @@
     "install:app": "pnpm build:desktop && node scripts/install-app.mjs",
     "env:seal": "scripts/env.sh seal",
     "env:open": "scripts/env.sh open",
-    "env:check": "scripts/env.sh check"
+    "env:check": "scripts/env.sh check",
+    "build:debug-app": "node scripts/with-env.mjs tauri build --debug --bundles app -- --config 'source.crates-io.replace-with=\"rsproxy-sparse\"' --config 'source.rsproxy-sparse.registry=\"sparse+https://rsproxy.cn/index/\"' && open src-tauri/target/debug/bundle/macos/FoxNudge.app"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

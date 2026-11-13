@@ -243,6 +243,19 @@ fn request(app: &AppHandle, cfg: &Config, path: &str) -> reqwest::RequestBuilder
     req
 }
 
+/// 服务器不认补收游标（ID 过期或不合法）时返回 400：清掉游标，下次不带 since 重连
+fn check_cursor(app: &AppHandle, status: reqwest::StatusCode) {
+    if status.as_u16() != 400 {
+        return;
+    }
+    let state = app.state::<AppState>();
+    let mut data = state.data.lock().unwrap();
+    if data.last_id.take().is_some() {
+        let _ = crate::data::save(&data);
+        log::warn("ntfy", "cursor-reset", json!({ "status": 400 }));
+    }
+}
+
 fn status_failure(status: reqwest::StatusCode) -> Failure {
     match status.as_u16() {
         401 | 403 => Failure::Auth("令牌无效，或没有这个主题的权限".into()),
@@ -276,6 +289,7 @@ async fn run(app: &AppHandle, cfg: &Config, attempts: &mut u32) -> Failure {
         Err(e) => return network_failure(e),
     };
     if !response.status().is_success() {
+        check_cursor(app, response.status());
         return status_failure(response.status());
     }
     let connected = chrono::Utc::now().timestamp();
@@ -307,7 +321,7 @@ async fn run(app: &AppHandle, cfg: &Config, attempts: &mut u32) -> Failure {
             set_status(app, |s| s.last_event_at = Some(now_ms() / 10_000 * 10_000));
             if event["event"] == "message" {
                 let backlog = event["time"].as_i64().unwrap_or(0) < connected - BACKLOG_GRACE_SECONDS;
-                receive(app, &event, backlog);
+                receive(app, &event, backlog, true);
             }
         }
     }
@@ -327,6 +341,7 @@ async fn poll(app: &AppHandle, cfg: &Config, attempts: &mut u32) -> Failure {
             Err(e) => return network_failure(e),
         };
         if !response.status().is_success() {
+            check_cursor(app, response.status());
             return status_failure(response.status());
         }
         let text = match response.text().await {
@@ -353,7 +368,7 @@ async fn poll(app: &AppHandle, cfg: &Config, attempts: &mut u32) -> Failure {
             .collect();
         for event in events.iter().filter(|e| e["event"] == "message") {
             // 首轮补收的是离线期间的消息，合并成一条提醒
-            receive(app, event, first);
+            receive(app, event, first, true);
         }
         first = false;
         tokio::time::sleep(Duration::from_secs(cfg.poll_seconds as u64)).await;
@@ -429,7 +444,8 @@ pub fn active_key(app: &AppHandle) -> Option<String> {
 }
 
 /// 收到的消息统一从这里进：去重、存盘、通知界面、提醒
-pub fn receive(app: &AppHandle, event: &Value, backlog: bool) {
+/// cursor：是否把这条记为补收游标；模拟消息不是服务器上的 ID，不能当游标
+pub fn receive(app: &AppHandle, event: &Value, backlog: bool, cursor: bool) {
     let state = app.state::<AppState>();
     let key = active_key(app);
     let message = {
@@ -439,7 +455,9 @@ pub fn receive(app: &AppHandle, event: &Value, backlog: bool) {
     let Some(message) = message else { return };
     let added = {
         let mut data = state.data.lock().unwrap();
-        data.last_id = Some(message.id.clone());
+        if cursor {
+            data.last_id = Some(message.id.clone());
+        }
         let added = data.push_message(message.clone());
         let _ = crate::data::save(&data);
         added

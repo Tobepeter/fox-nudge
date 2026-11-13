@@ -168,7 +168,7 @@ pub fn debug_inject(app: AppHandle, message: Inject) -> Result<String, String> {
         "title": "",
         "tags": [],
     });
-    ntfy::receive(&app, &event, message.backlog);
+    ntfy::receive(&app, &event, message.backlog, false);
     Ok(id)
 }
 

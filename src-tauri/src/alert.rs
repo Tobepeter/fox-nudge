@@ -53,10 +53,11 @@ fn show(app: &AppHandle, title: &str, body: &str) {
 }
 
 /// 弹一条系统通知。
-/// 开发版没有 .app 包，通知插件会借用「终端」的身份，终端没有通知授权时系统直接丢弃，
+/// tauri dev 没有 .app 包，通知插件会借用「终端」的身份，终端没有通知授权时系统直接丢弃，
 /// 所以开发版改用系统自带的 osascript 弹（显示为「脚本编辑器」）；安装版走插件，用 FoxNudge 自己的身份
 pub fn notify(app: &AppHandle, title: &str, body: &str) {
-    if cfg!(debug_assertions) {
+    // 只在 tauri dev 下绕开插件；debug 版 .app 有自己的包身份，走插件才能测到真实通知
+    if tauri::is_dev() {
         let (title, body) = (title.to_string(), body.to_string());
         std::thread::spawn(move || {
             // 标题和正文作为参数传入，不拼进脚本，免去转义
