@@ -1,0 +1,286 @@
+// DEBUG：浏览器 DEV 的模拟运行时，命令名和返回结构与 Rust 一致，数据只在内存里
+// 不依赖 import.meta，供 node --test 直接测试
+import type { Snapshot } from '../../lib/bindings/Snapshot'
+import type { Settings } from '../../lib/bindings/Settings'
+import type { Template } from '../../lib/bindings/Template'
+import type { Message } from '../../lib/bindings/Message'
+import type { Connection } from '../../lib/bindings/Connection'
+
+type Listener = (value: unknown) => void
+export type Effect =
+  | { kind: 'notification'; title: string; body: string }
+  | { kind: 'sound'; sound: string }
+  | { kind: 'log'; level: string; event: string }
+  | { kind: 'open-logs' }
+
+const SOUNDS = ['Glass', 'Ping', 'Pop', 'Purr', 'Submarine', 'Hero', 'Funk', 'none']
+const BODY_LIMIT = 500
+
+function randomId(length: number) {
+  const bytes = new Uint8Array(length)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => (b % 16).toString(16)).join('')
+}
+
+function defaultTemplates(): Template[] {
+  return [
+    ['来一下', '有空来一下'],
+    ['吃饭', '吃饭啦'],
+    ['好了', '弄好了，可以看了'],
+    ['收到', '收到'],
+  ].map(([title, body]) => ({ id: randomId(16), title, body }))
+}
+
+export type WebRuntimeOptions = { connectMs?: number; retryMs?: number }
+
+export class WebRuntime {
+  state: Snapshot
+  effects: Effect[] = []
+  #listeners = new Map<string, Set<Listener>>()
+  #timers = new Set<ReturnType<typeof setTimeout>>()
+  #initial: Snapshot
+  #connectMs: number
+  #retryMs: number
+
+  constructor(initial: Snapshot, options: WebRuntimeOptions = {}) {
+    this.#initial = initial
+    this.#connectMs = options.connectMs ?? 600
+    this.#retryMs = options.retryMs ?? 2000
+    this.state = this.#fresh()
+    this.#connect()
+  }
+
+  #fresh(): Snapshot {
+    const base = structuredClone(this.#initial)
+    return {
+      ...base,
+      identity: { id: randomId(12), name: 'anonymous' },
+      templates: defaultTemplates(),
+      messages: [],
+      tokenSource: 'builtin',
+      // 模拟内置了默认密钥，开箱即可加密发送
+      keySource: 'builtin',
+      version: `${base.version || '0.1.0'}-web`,
+      dev: true,
+    }
+  }
+
+  on(name: string, listener: Listener) {
+    let set = this.#listeners.get(name)
+    if (!set) this.#listeners.set(name, (set = new Set()))
+    set.add(listener)
+    return () => set.delete(listener)
+  }
+
+  #emit(name: string, value: unknown) {
+    for (const listener of this.#listeners.get(name) ?? []) listener(structuredClone(value))
+  }
+
+  #changed() {
+    this.#emit('snapshot', this.state)
+  }
+
+  #later(ms: number, work: () => void) {
+    const timer = setTimeout(() => {
+      this.#timers.delete(timer)
+      work()
+    }, ms)
+    this.#timers.add(timer)
+  }
+
+  dispose() {
+    for (const timer of this.#timers) clearTimeout(timer)
+    this.#timers.clear()
+    this.#listeners.clear()
+  }
+
+  #setConnection(next: Partial<Connection>) {
+    this.state.connection = { ...this.state.connection, ...next }
+    this.#emit('connection', this.state.connection)
+  }
+
+  #configured() {
+    return !!this.state.settings.server && !!this.state.settings.topic
+  }
+
+  #connect() {
+    for (const timer of this.#timers) clearTimeout(timer)
+    this.#timers.clear()
+    if (!this.#configured()) {
+      this.#setConnection({ state: 'unconfigured', connectedAt: null, error: '', retryAt: null })
+      return
+    }
+    this.#setConnection({ state: 'connecting', mode: this.state.settings.mode, retryAt: null })
+    this.#later(this.#connectMs, () => {
+      const now = Date.now()
+      this.#setConnection({ state: 'connected', connectedAt: now, lastEventAt: now, attempts: 0, error: '' })
+    })
+  }
+
+  #push(message: Message, announce = true) {
+    if (this.state.messages.some((m) => m.id === message.id)) return false
+    this.state.messages.push(message)
+    this.state.messages.sort((a, b) => a.time - b.time)
+    this.state.messages = this.state.messages.slice(-300)
+    if (announce) this.#emit('message', message)
+    this.#changed()
+    return true
+  }
+
+  #validate(settings: Settings) {
+    if (settings.server && !/^https?:\/\//.test(settings.server))
+      throw new Error('服务器地址需以 https:// 开头')
+    if (settings.topic && !/^[A-Za-z0-9_-]+$/.test(settings.topic))
+      throw new Error('主题只能包含字母、数字、- 和 _')
+    if (!SOUNDS.includes(settings.sound)) throw new Error('未知的提示音')
+  }
+
+  async command(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
+    await Promise.resolve()
+    switch (name) {
+      case 'get_snapshot':
+        return structuredClone(this.state)
+      case 'save_settings': {
+        const settings = structuredClone(args.settings as Settings)
+        settings.server = settings.server.trim().replace(/\/+$/, '')
+        settings.topic = settings.topic.trim()
+        settings.pollSeconds = Math.min(3600, Math.max(15, settings.pollSeconds))
+        this.#validate(settings)
+        const previous = this.state.settings
+        const reconnect =
+          settings.server !== previous.server ||
+          settings.topic !== previous.topic ||
+          settings.mode !== previous.mode ||
+          settings.pollSeconds !== previous.pollSeconds
+        this.state.settings = settings
+        if (reconnect) this.#connect()
+        this.#changed()
+        return
+      }
+      case 'save_identity': {
+        const name = String(args.name ?? '').trim().slice(0, 24)
+        this.state.identity = { ...this.state.identity, name: name || 'anonymous' }
+        this.#changed()
+        return
+      }
+      case 'save_templates': {
+        const templates = structuredClone(args.templates as Template[]).map((t) => ({
+          ...t,
+          id: t.id || randomId(16),
+          title: t.title.trim().slice(0, 20),
+          body: t.body.trim(),
+        }))
+        if (templates.length > 30) throw new Error('模板最多 30 个')
+        if (templates.some((t) => !t.title || !t.body)) throw new Error('模板的名称和内容都不能为空')
+        this.state.templates = templates
+        this.#changed()
+        return
+      }
+      case 'set_secret': {
+        const value = String(args.value ?? '').trim()
+        if (args.kind === 'token') {
+          this.state.tokenSource = value ? 'custom' : 'builtin'
+          this.#connect()
+        } else if (args.kind === 'key') this.state.keySource = value ? 'custom' : 'builtin'
+        else throw new Error('未知的凭据')
+        this.#changed()
+        return
+      }
+      case 'generate_key':
+        return randomId(32)
+      case 'send': {
+        const body = String(args.body ?? '').trim()
+        const title = String(args.title ?? '').trim()
+        if (!body) throw new Error('消息不能为空')
+        if ([...body].length > BODY_LIMIT) throw new Error(`消息最长 ${BODY_LIMIT} 个字`)
+        if (!this.#configured()) throw new Error('请先在设置里填写服务器和主题')
+        if (this.state.settings.encrypt && this.state.keySource === 'none')
+          throw new Error('加密已开启，但还没有共享密钥，请在设置里填写')
+        if (this.state.connection.state === 'waiting') throw new Error('连不上服务器')
+        const message: Message = {
+          id: `web-${randomId(10)}`,
+          time: Math.floor(Date.now() / 1000),
+          title,
+          body,
+          senderId: this.state.identity.id,
+          senderName: this.state.identity.name,
+          mine: true,
+          encrypted: this.state.settings.encrypt,
+          status: 'ok',
+        }
+        // 和桌面一致：发送结果先入列表，订阅回声稍后到达
+        this.#push(message, false)
+        this.#later(300, () => this.#emit('echo', message.id))
+        return structuredClone(message)
+      }
+      case 'reconnect':
+        this.#connect()
+        return
+      case 'clear_history':
+        this.state.messages = []
+        this.#changed()
+        return
+      case 'wipe_data':
+        this.state = this.#fresh()
+        this.#connect()
+        this.#changed()
+        return
+      case 'open_logs':
+        this.effects.push({ kind: 'open-logs' })
+        return
+      case 'test_sound':
+        this.effects.push({ kind: 'sound', sound: String(args.sound) })
+        return
+      case 'test_notification':
+        this.effects.push({ kind: 'notification', title: 'FoxNudge', body: '这是一条测试通知' })
+        return
+      case 'log_client':
+        this.effects.push({ kind: 'log', level: String(args.level), event: String(args.event) })
+        return
+      case 'debug_inject': {
+        const input = args.message as {
+          title?: string
+          body: string
+          senderName?: string
+          encrypted?: boolean
+          backlog?: boolean
+          wrongKey?: boolean
+        }
+        const undecryptable = !!input.wrongKey
+        const message: Message = {
+          id: `debug-${randomId(10)}`,
+          time: Math.floor(Date.now() / 1000) - (input.backlog ? 600 : 0),
+          title: undecryptable ? '' : (input.title ?? ''),
+          body: undecryptable ? '' : input.body,
+          senderId: undecryptable ? null : 'debug-sender',
+          senderName: undecryptable ? null : (input.senderName ?? '调试'),
+          mine: false,
+          encrypted: !!input.encrypted || undecryptable,
+          status: undecryptable ? 'undecryptable' : 'ok',
+        }
+        this.#push(message)
+        if (this.state.settings.notify)
+          this.effects.push({
+            kind: 'notification',
+            title: message.senderName ?? '收到一条无法解密的消息',
+            body: message.body,
+          })
+        if (this.state.settings.sound !== 'none')
+          this.effects.push({ kind: 'sound', sound: this.state.settings.sound })
+        return message.id
+      }
+      case 'debug_disconnect':
+        this.#setConnection({
+          state: 'waiting',
+          connectedAt: null,
+          attempts: this.state.connection.attempts + 1,
+          error: '模拟断线',
+          retryAt: Date.now() + this.#retryMs,
+        })
+        this.#later(this.#retryMs, () => this.#connect())
+        return
+      default:
+        throw new Error(`Web 模拟不支持：${name}`)
+    }
+  }
+}
