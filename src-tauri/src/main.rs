@@ -114,6 +114,20 @@ pub fn alert_error(app: &tauri::AppHandle, text: &str) {
     }
 }
 
+/// 开发版的 Dock 图标换成方形原图（icons/dev.png），安装版走 icon.icns 由系统显示圆角，
+/// 两者在 Dock 里一眼可分。必须在 RunEvent::Ready 之后调用：tauri dev 会在 Ready 时用 icon.icns 覆盖一次
+#[cfg(all(debug_assertions, target_os = "macos"))]
+fn dev_icon() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
+    let Some(main) = MainThreadMarker::new() else { return };
+    let bytes = NSData::with_bytes(include_bytes!("../icons/dev.png"));
+    if let Some(image) = NSImage::initWithData(main.alloc(), &bytes) {
+        unsafe { NSApplication::sharedApplication(main).setApplicationIconImage(Some(&image)) };
+    }
+}
+
 fn apply_dock(app: &tauri::AppHandle, window_visible: bool) {
     let mode = app.state::<AppState>().data.lock().unwrap().settings.dock_mode.clone();
     let visible = mode == "always" || (mode == "window" && window_visible);
@@ -469,6 +483,9 @@ fn main() {
         .expect("FoxNudge failed to initialize");
     app.run(move |app, event| match event {
         RunEvent::Ready => {
+            // 开发版换成方形图标，和安装版区分
+            #[cfg(all(debug_assertions, target_os = "macos"))]
+            dev_icon();
             log::info("main", "ready", json!({ "ms": launched.elapsed().as_millis() as u64 }));
             if hidden {
                 apply_dock(app, false);
