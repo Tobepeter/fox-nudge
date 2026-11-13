@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react'
 import { ConfirmAction } from './confirm-action'
+import { HelpTip } from './help-tip'
 import { Avatar } from './avatar'
 import type { Identity, Message } from '../lib/runtime'
 
@@ -22,7 +23,10 @@ export function History(props: {
   return (
     <section className='flex min-h-0 flex-1 flex-col gap-3'>
       <div className='flex shrink-0 items-center justify-between'>
-        <h2 className='font-medium'>历史</h2>
+        <div className='flex items-center gap-0.5'>
+          <h2 className='font-medium'>历史</h2>
+          <HelpTip label='历史保留规则'>只保留最近 300 条，更早的自动清掉；只存在这台电脑上</HelpTip>
+        </div>
         {messages.length > 0 && (
           <ConfirmAction
             label='清空历史'
