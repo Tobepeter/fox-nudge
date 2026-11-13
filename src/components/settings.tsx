@@ -6,13 +6,14 @@ import { Input } from './ui/input'
 import { Switch } from './ui/switch'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 import { Choice } from './choice'
-import { Avatar, avatarStyles } from './avatar'
+import { Avatar, avatarPresets } from './avatar'
 import { ClearableInput } from './clearable-input'
 import { ConfirmAction } from './confirm-action'
 import { HelpTip } from './help-tip'
 import { ThemeToggle } from './theme-toggle'
 import { Tip } from './tip'
 import { initial, sounds } from '../lib/initial'
+import { ANONYMOUS, cleanName, hasName, NAME_LIMIT } from '../lib/avatar-text'
 import { api, desktop, type Settings as SettingsData, type Snapshot } from '../lib/runtime'
 
 const pressed = 'px-3 data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground'
@@ -146,30 +147,43 @@ type PanelProps = {
 
 function General({ snapshot, disabled, set, run }: PanelProps) {
   const settings = snapshot.settings
+  const named = hasName(snapshot.identity.name)
   return (
     <>
       <Section title='身份'>
-        <Row label='头像' help='按设备 ID 自动生成；设了昵称就显示昵称，中文最多 2 个字、英文 4 个'>
-          <div className='flex gap-1' role='radiogroup' aria-label='头像风格'>
-            {avatarStyles.map((option) => (
-              <Tip key={option.value} content={option.label}>
-                <button
-                  role='radio'
-                  aria-checked={settings.avatarStyle === option.value}
-                  aria-label={option.label}
-                  disabled={disabled}
-                  onClick={() => set({ avatarStyle: option.value })}
-                  className={`rounded-full p-0.5 ring-2 transition-shadow ${settings.avatarStyle === option.value ? 'ring-primary' : 'ring-transparent hover:ring-border'}`}
-                >
-                  <Avatar id={snapshot.identity.id} style={option.value} size={26} />
-                </button>
-              </Tip>
-            ))}
-          </div>
-        </Row>
         <Row label='昵称'>
-          <Avatar id={snapshot.identity.id} name={snapshot.identity.name} style={settings.avatarStyle} size={26} />
-          <TextSetting value={snapshot.identity.name} fallback='anonymous' maxLength={24} disabled={disabled} onSave={(name) => void run(() => api.saveIdentity(name))} />
+          <TextSetting
+            value={snapshot.identity.name}
+            fallback={ANONYMOUS}
+            maxLength={NAME_LIMIT}
+            disabled={disabled}
+            onSave={(name) => void run(() => api.saveIdentity(cleanName(name)))}
+          />
+        </Row>
+        <Row label='头像' help={named ? undefined : '设了昵称后可以用名字当头像'}>
+          <div className='flex gap-1' role='radiogroup' aria-label='头像'>
+            {['name', ...avatarPresets].map((value) => {
+              const off = value === 'name' && !named
+              const checked = settings.avatarStyle === value
+              return (
+                <button
+                  key={value}
+                  role='radio'
+                  aria-checked={checked}
+                  aria-label={value === 'name' ? '名字' : value}
+                  disabled={disabled || off}
+                  onClick={() => set({ avatarStyle: value })}
+                  className={`rounded-full p-0.5 ring-2 transition-shadow disabled:opacity-40 ${checked ? 'ring-primary' : 'ring-transparent enabled:hover:ring-border'}`}
+                >
+                  {value === 'name' && !named ? (
+                    <span className='flex size-[26px] items-center justify-center rounded-full border border-dashed text-muted-foreground'>名</span>
+                  ) : (
+                    <Avatar id={snapshot.identity.id} name={snapshot.identity.name} avatar={value} size={26} />
+                  )}
+                </button>
+              )
+            })}
+          </div>
         </Row>
       </Section>
       <Section title='提醒'>

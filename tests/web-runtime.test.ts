@@ -144,3 +144,22 @@ test('重置设置保留昵称和文案，恢复默认文案', async () => {
   assert.deepEqual(next.templates.map((t) => t.text), ['叮', '来一下', '吃饭啦', '好了', '收到'])
   rt.dispose()
 })
+
+test('头像：首次随机预设；清空昵称时名字头像自动回退到预设', async () => {
+  const rt = new WebRuntime(initial, { connectMs: 5 })
+  let s = await snapshot(rt)
+  assert.notEqual(s.settings.avatarStyle, 'name')
+  await rt.command('save_settings', { settings: { ...s.settings, avatarStyle: 'name' } })
+  assert.notEqual((await snapshot(rt)).settings.avatarStyle, 'name', '没有昵称时不能选名字头像')
+  await rt.command('save_identity', { name: '小狐狸' })
+  s = await snapshot(rt)
+  await rt.command('save_settings', { settings: { ...s.settings, avatarStyle: 'name' } })
+  assert.equal((await snapshot(rt)).settings.avatarStyle, 'name')
+  await rt.command('save_identity', { name: 'ANONYMOUS' })
+  s = await snapshot(rt)
+  assert.equal(s.identity.name, 'anonymous')
+  assert.notEqual(s.settings.avatarStyle, 'name')
+  const sent = (await rt.command('send', { title: '', body: 'hi' })) as Message
+  assert.equal(sent.senderAvatar, s.settings.avatarStyle)
+  rt.dispose()
+})

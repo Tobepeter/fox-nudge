@@ -366,6 +366,7 @@ pub fn decode(event: &Value, identity: &Identity, key: Option<&str>) -> Option<M
                 mine: p.from.id == identity.id,
                 sender_id: Some(p.from.id),
                 sender_name: Some(p.from.name),
+                sender_avatar: Some(p.from.avatar).filter(|a| !a.is_empty()),
                 encrypted: true,
                 status: "ok".into(),
             },
@@ -376,6 +377,7 @@ pub fn decode(event: &Value, identity: &Identity, key: Option<&str>) -> Option<M
                 body: String::new(),
                 sender_id: None,
                 sender_name: None,
+                sender_avatar: None,
                 mine: false,
                 encrypted: true,
                 status: "undecryptable".into(),
@@ -391,6 +393,7 @@ pub fn decode(event: &Value, identity: &Identity, key: Option<&str>) -> Option<M
     let sender_name = tag("fnname-")
         .and_then(|n| B64.decode(n).ok())
         .and_then(|b| String::from_utf8(b).ok());
+    let sender_avatar = tag("fnav-");
     Some(Message {
         id,
         time,
@@ -399,6 +402,7 @@ pub fn decode(event: &Value, identity: &Identity, key: Option<&str>) -> Option<M
         mine: sender_id.as_deref() == Some(identity.id.as_str()),
         sender_id,
         sender_name,
+        sender_avatar,
         encrypted: false,
         status: "ok".into(),
     })
@@ -483,10 +487,10 @@ pub async fn publish(app: &AppHandle, title: String, body: String) -> Result<Mes
         return Err(format!("消息最长 {} 个字", crate::data::BODY_LIMIT));
     }
     let cfg = config(app).ok_or("请先在设置里填写服务器和主题")?;
-    let (identity, encrypt) = {
+    let (identity, encrypt, avatar) = {
         let state = app.state::<AppState>();
         let data = state.data.lock().unwrap();
-        (data.identity.clone(), data.settings.encrypt)
+        (data.identity.clone(), data.settings.encrypt, data.settings.avatar_style.clone())
     };
     let request = if encrypt {
         let key = active_key(app).ok_or("加密已开启，但还没有共享密钥，请在设置里填写")?;
@@ -494,7 +498,7 @@ pub async fn publish(app: &AppHandle, title: String, body: String) -> Result<Mes
             &key,
             &Payload {
                 v: 1,
-                from: Sender { id: identity.id.clone(), name: identity.name.clone() },
+                from: Sender { id: identity.id.clone(), name: identity.name.clone(), avatar: avatar.clone() },
                 title: title.clone(),
                 body: body.clone(),
             },
@@ -504,7 +508,12 @@ pub async fn publish(app: &AppHandle, title: String, body: String) -> Result<Mes
         let mut value = json!({
             "topic": cfg.topic,
             "message": body,
-            "tags": ["fn1", format!("fnid-{}", identity.id), format!("fnname-{}", B64.encode(&identity.name))],
+            "tags": [
+                "fn1",
+                format!("fnid-{}", identity.id),
+                format!("fnname-{}", B64.encode(&identity.name)),
+                format!("fnav-{avatar}"),
+            ],
         });
         if !title.is_empty() {
             value["title"] = json!(title);
@@ -554,12 +563,13 @@ mod tests {
     fn decodes_sealed_messages() {
         let sealed = crypto::seal(
             "k",
-            &Payload { v: 1, from: Sender { id: "me123".into(), name: "tobe".into() }, title: "t".into(), body: "b".into() },
+            &Payload { v: 1, from: Sender { id: "me123".into(), name: "tobe".into(), avatar: "ring".into() }, title: "t".into(), body: "b".into() },
         )
         .unwrap();
         let event = json!({ "id": "x1", "time": 10, "event": "message", "message": sealed });
         let m = decode(&event, &me(), Some("k")).unwrap();
         assert!(m.mine && m.encrypted && m.status == "ok" && m.body == "b");
+        assert_eq!(m.sender_avatar.as_deref(), Some("ring"));
         let m = decode(&event, &me(), Some("other")).unwrap();
         assert_eq!(m.status, "undecryptable");
         let m = decode(&event, &me(), None).unwrap();
@@ -569,10 +579,11 @@ mod tests {
     fn decodes_plain_messages_with_and_without_identity() {
         let event = json!({
             "id": "x2", "time": 11, "event": "message", "message": "hi", "title": "T",
-            "tags": ["fn1", "fnid-other", format!("fnname-{}", B64.encode("小明"))],
+            "tags": ["fn1", "fnid-other", format!("fnname-{}", B64.encode("小明")), "fnav-pixel"],
         });
         let m = decode(&event, &me(), None).unwrap();
         assert_eq!((m.mine, m.sender_name.as_deref(), m.title.as_str()), (false, Some("小明"), "T"));
+        assert_eq!(m.sender_avatar.as_deref(), Some("pixel"));
         let curl = json!({ "id": "x3", "time": 12, "event": "message", "message": "from curl" });
         let m = decode(&curl, &me(), None).unwrap();
         assert!(m.sender_id.is_none() && !m.mine && m.body == "from curl");

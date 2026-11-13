@@ -146,6 +146,10 @@ fn get_snapshot(app: tauri::AppHandle) -> Snapshot {
 fn save_settings(app: tauri::AppHandle, mut settings: Settings) -> Result<(), String> {
     settings.normalize();
     settings.validate()?;
+    let anonymous = app.state::<AppState>().data.lock().unwrap().identity.name == data::ANONYMOUS;
+    if anonymous && settings.avatar_style == "name" {
+        settings.avatar_style = data::random_style();
+    }
     if !settings.shortcut.is_empty() {
         settings
             .shortcut
@@ -205,9 +209,14 @@ fn save_settings(app: tauri::AppHandle, mut settings: Settings) -> Result<(), St
 
 #[tauri::command]
 fn save_identity(app: tauri::AppHandle, name: String) -> Result<(), String> {
-    let name: String = name.trim().chars().take(data::NAME_LIMIT).collect();
-    let name = if name.is_empty() { "anonymous".to_string() } else { name };
-    save(&app, |d| d.identity.name = name)?;
+    let name = data::clean_name(&name);
+    save(&app, |d| {
+        d.identity.name = name.clone().unwrap_or_else(|| data::ANONYMOUS.into());
+        // 回到兜底名字时，“名字”头像没法用了，自动换成随机一套预设
+        if name.is_none() && d.settings.avatar_style == "name" {
+            d.settings.avatar_style = data::random_style();
+        }
+    })?;
     log::info("settings", "identity-changed", json!({}));
     notify(&app);
     Ok(())

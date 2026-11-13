@@ -48,7 +48,7 @@ export function History(props: {
                     <Avatar
                       id={m.mine ? props.identity.id : m.senderId}
                       name={m.mine ? props.identity.name : m.senderName}
-                      style={props.avatarStyle}
+                      avatar={m.mine ? props.avatarStyle : m.senderAvatar}
                       size={24}
                     />
                     <span className='truncate'>{m.mine ? '我' : m.senderName || '—'}</span>

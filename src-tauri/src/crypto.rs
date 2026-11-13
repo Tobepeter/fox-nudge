@@ -22,6 +22,9 @@ pub fn builtin_key() -> Option<&'static str> {
 pub struct Sender {
     pub id: String,
     pub name: String,
+    /// 头像风格，旧版本发的消息没有
+    #[serde(default)]
+    pub avatar: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -77,7 +80,7 @@ mod tests {
     fn payload() -> Payload {
         Payload {
             v: 1,
-            from: Sender { id: "abc".into(), name: "tobe".into() },
+            from: Sender { id: "abc".into(), name: "tobe".into(), avatar: "beam".into() },
             title: "来一下".into(),
             body: "有空来一下".into(),
         }

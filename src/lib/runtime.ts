@@ -21,6 +21,7 @@ export type InjectMessage = {
   encrypted?: boolean
   backlog?: boolean
   wrongKey?: boolean
+  avatar?: string
 }
 
 // DEV 动态入口在生产构建中整体剔除

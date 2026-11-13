@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useState, type RefObject } from 'react'
 import { GripVertical, Pencil, Plus, SendHorizontal, X } from 'lucide-react'
 import {
   closestCenter,
@@ -45,22 +45,29 @@ function TextField(props: { value: string; onSave: (value: string) => void; auto
   )
 }
 
+// 拖动把手，平时淡一些，悬停整行时加深
+function Handle({ sortable }: { sortable: ReturnType<typeof useSortable> }) {
+  return (
+    <button
+      aria-label='拖动排序'
+      className='flex size-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground/50 group-hover:text-muted-foreground hover:bg-muted active:cursor-grabbing'
+      {...sortable.attributes}
+      {...sortable.listeners}
+    >
+      <GripVertical className='size-4' />
+    </button>
+  )
+}
+
 function Row(props: { item: Template; update: (text: string) => void; remove: () => void }) {
   const sortable = useSortable({ id: props.item.id })
   return (
     <li
       ref={sortable.setNodeRef}
       style={{ transform: CSS.Translate.toString(sortable.transform), transition: sortable.transition }}
-      className={`flex items-center gap-1 bg-background py-1 ${sortable.isDragging ? 'relative z-10 rounded-lg shadow-md' : ''}`}
+      className={`group flex items-center gap-1 bg-background py-1 ${sortable.isDragging ? 'relative z-10 rounded-lg shadow-md' : ''}`}
     >
-      <button
-        aria-label='拖动排序'
-        className='flex size-8 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground active:cursor-grabbing'
-        {...sortable.attributes}
-        {...sortable.listeners}
-      >
-        <GripVertical className='size-4' />
-      </button>
+      <Handle sortable={sortable} />
       <TextField value={props.item.text} onSave={props.update} />
       <Tip content='删除'>
         <Button variant='ghost' size='icon' aria-label='删除' onClick={props.remove}>
@@ -71,22 +78,21 @@ function Row(props: { item: Template; update: (text: string) => void; remove: ()
   )
 }
 
-// 发送列表的一行：整行点击广播，整行拖动排序；移动超过 6px 才算拖动，拖完不触发广播
-function SendRow(props: { item: Template; disabled: boolean; dragging: RefObject<boolean>; send: (text: string) => void }) {
+// 发送列表的一行：左侧把手拖动排序，整行按钮点击广播
+function SendRow(props: { item: Template; disabled: boolean; send: (text: string) => void }) {
   const sortable = useSortable({ id: props.item.id })
   return (
     <li
       ref={sortable.setNodeRef}
       style={{ transform: CSS.Translate.toString(sortable.transform), transition: sortable.transition }}
-      className={sortable.isDragging ? 'relative z-10' : ''}
-      {...sortable.attributes}
-      {...sortable.listeners}
+      className={`group flex items-center gap-1 ${sortable.isDragging ? 'relative z-10' : ''}`}
     >
+      <Handle sortable={sortable} />
       <Button
         variant='outline'
-        className={`h-9 w-full justify-start ${sortable.isDragging ? 'cursor-grabbing shadow-md' : ''}`}
+        className={`h-9 min-w-0 flex-1 justify-start ${sortable.isDragging ? 'shadow-md' : ''}`}
         disabled={props.disabled}
-        onClick={() => !props.dragging.current && props.send(props.item.text)}
+        onClick={() => props.send(props.item.text)}
       >
         <span className='truncate'>{props.item.text}</span>
       </Button>
@@ -96,30 +102,17 @@ function SendRow(props: { item: Template; disabled: boolean; dragging: RefObject
 
 function SendList(props: { items: Template[]; disabled: boolean; send: (text: string) => void; save: (next: Template[]) => void }) {
   const { items } = props
-  const dragging = useRef(false)
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
   function onDragEnd({ active, over }: DragEndEvent) {
-    // 拖动结束后紧跟的 click 不算广播
-    setTimeout(() => (dragging.current = false), 0)
     if (!over || active.id === over.id) return
     props.save(arrayMove(items, items.findIndex((t) => t.id === active.id), items.findIndex((t) => t.id === over.id)))
   }
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      modifiers={[vertical]}
-      onDragStart={() => (dragging.current = true)}
-      onDragCancel={() => (dragging.current = false)}
-      onDragEnd={onDragEnd}
-    >
+    <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[vertical]} onDragEnd={onDragEnd}>
       <SortableContext items={items.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-        <ul className='max-w-md space-y-2'>
+        <ul className='max-w-md space-y-1.5'>
           {items.map((item) => (
-            <SendRow key={item.id} item={item} disabled={props.disabled} dragging={dragging} send={props.send} />
+            <SendRow key={item.id} item={item} disabled={props.disabled} send={props.send} />
           ))}
         </ul>
       </SortableContext>

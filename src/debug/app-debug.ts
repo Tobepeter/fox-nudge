@@ -61,6 +61,7 @@ export class AppDebug implements DebugSurface {
         notify: s.settings.notify,
         theme: s.settings.theme,
         dockMode: s.settings.dockMode,
+        avatarStyle: s.settings.avatarStyle,
       },
       tokenSource: s.tokenSource,
       keySource: s.keySource,
@@ -73,6 +74,7 @@ export class AppDebug implements DebugSurface {
         status: last.status,
         encrypted: last.encrypted,
         sender: last.senderName,
+        avatar: last.senderAvatar,
         chars: [...last.body].length,
       },
     }

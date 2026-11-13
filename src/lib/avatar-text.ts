@@ -22,3 +22,16 @@ export function avatarText(name: string) {
 export function avatarFontSize(size: number, em: number) {
   return Math.round(Math.min(size * 0.5, (size * 0.72) / Math.max(em, 1)) * 10) / 10
 }
+
+export const ANONYMOUS = 'anonymous'
+export const NAME_LIMIT = 16
+
+/** 和 Rust clean_name 一致：只留各国文字、数字、空格和 - _ . ·，合并空白，最多 16 个字；为空或 anonymous 返回空串 */
+export function cleanName(input: string) {
+  const kept = [...input.replace(/\s/gu, ' ')].filter((c) => /[\p{L}\p{N} \-_.·]/u.test(c)).join('')
+  const name = [...kept.split(' ').filter(Boolean).join(' ')].slice(0, NAME_LIMIT).join('').trim()
+  return name.toLowerCase() === ANONYMOUS ? '' : name
+}
+
+/** 是否设了自己的昵称（不是兜底的 anonymous） */
+export const hasName = (name?: string | null) => !!name && cleanName(name) !== ''

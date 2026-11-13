@@ -8,7 +8,11 @@ id: string,
 /**
  * 秒级时间戳
  */
-time: number, title: string, body: string, senderId: string | null, senderName: string | null, mine: boolean, encrypted: boolean, 
+time: number, title: string, body: string, senderId: string | null, senderName: string | null, 
+/**
+ * 发送者选的头像风格，旧消息和 curl 发的没有；旧的 data.json 里缺这个字段也能读
+ */
+senderAvatar: string | null, mine: boolean, encrypted: boolean, 
 /**
  * ok；undecryptable：解不开的密文
  */

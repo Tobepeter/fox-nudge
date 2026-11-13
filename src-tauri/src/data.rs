@@ -5,7 +5,7 @@ use std::{fs, path::PathBuf, sync::OnceLock};
 pub const HISTORY_LIMIT: usize = 300;
 pub const TEMPLATE_LIMIT: usize = 10;
 pub const TEMPLATE_TEXT_LIMIT: usize = 100;
-pub const NAME_LIMIT: usize = 24;
+pub const NAME_LIMIT: usize = 16;
 pub const BODY_LIMIT: usize = 500;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -25,7 +25,7 @@ pub struct Settings {
     /// window：主窗口打开时显示；always；never
     pub dock_mode: String,
     pub theme: String,
-    /// 程序化头像风格，按设备 ID 生成
+    /// 头像：name 显示昵称文字，其余是按设备 ID 生成的预设风格；首次随机选一套预设
     pub avatar_style: String,
     pub launch_at_login: bool,
 }
@@ -42,12 +42,35 @@ impl Default for Settings {
             shortcut: "Control+Alt+N".into(),
             dock_mode: "window".into(),
             theme: "system".into(),
-            avatar_style: "beam".into(),
+            avatar_style: random_style(),
             launch_at_login: false,
         }
     }
 }
 pub const AVATAR_STYLES: [&str; 6] = ["beam", "marble", "bauhaus", "ring", "pixel", "sunset"];
+pub const ANONYMOUS: &str = "anonymous";
+
+/// 随机选一套预设头像风格
+pub fn random_style() -> String {
+    AVATAR_STYLES[rand::random::<usize>() % AVATAR_STYLES.len()].to_string()
+}
+
+/// 昵称清洗：只留各国文字、数字、空格和 - _ . ·，合并空白，最多 16 个字；
+/// 清洗后为空或等于 anonymous（不分大小写）都回到兜底，返回 None
+pub fn clean_name(input: &str) -> Option<String> {
+    let kept: String = input
+        .chars()
+        .map(|c| if c.is_whitespace() { ' ' } else { c })
+        .filter(|c| c.is_alphanumeric() || " -_.·".contains(*c))
+        .collect();
+    let name: String = kept.split(' ').filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
+    let name: String = name.chars().take(NAME_LIMIT).collect::<String>().trim().to_string();
+    if name.is_empty() || name.eq_ignore_ascii_case(ANONYMOUS) {
+        None
+    } else {
+        Some(name)
+    }
+}
 pub const SOUNDS: [&str; 8] = [
     "Glass", "Ping", "Pop", "Purr", "Submarine", "Hero", "Funk", "none",
 ];
@@ -91,7 +114,7 @@ impl Settings {
         if !matches!(self.dock_mode.as_str(), "window" | "always" | "never") {
             return Err("未知的 Dock 显示方式".into());
         }
-        if !AVATAR_STYLES.contains(&self.avatar_style.as_str()) {
+        if self.avatar_style != "name" && !AVATAR_STYLES.contains(&self.avatar_style.as_str()) {
             return Err("未知的头像风格".into());
         }
         if !matches!(self.theme.as_str(), "system" | "light" | "dark") {
@@ -113,7 +136,7 @@ impl Identity {
     pub fn fresh() -> Self {
         Self {
             id: uuid::Uuid::new_v4().simple().to_string()[..12].to_string(),
-            name: "anonymous".into(),
+            name: ANONYMOUS.into(),
         }
     }
 }
@@ -140,6 +163,9 @@ pub struct Message {
     pub body: String,
     pub sender_id: Option<String>,
     pub sender_name: Option<String>,
+    /// 发送者选的头像风格，旧消息和 curl 发的没有；旧的 data.json 里缺这个字段也能读
+    #[serde(default)]
+    pub sender_avatar: Option<String>,
     pub mine: bool,
     pub encrypted: bool,
     /// ok；undecryptable：解不开的密文
@@ -291,6 +317,7 @@ mod tests {
             body: String::new(),
             sender_id: None,
             sender_name: None,
+            sender_avatar: None,
             mine: false,
             encrypted: false,
             status: "ok".into(),
@@ -324,6 +351,25 @@ mod tests {
         assert!(s.validate().is_err());
     }
     #[test]
+    fn names_are_cleaned_and_capped() {
+        assert_eq!(clean_name("  tobe  "), Some("tobe".into()));
+        assert_eq!(clean_name("Anonymous"), None);
+        assert_eq!(clean_name("  "), None);
+        assert_eq!(clean_name("<script>小\n狐"), Some("script小 狐".into()));
+        assert_eq!(clean_name("a\u{200b}b🦊c"), Some("abc".into()));
+        assert_eq!(clean_name("我的名字特别特别特别特别特别特别长").unwrap().chars().count(), NAME_LIMIT);
+        assert_eq!(clean_name("x-1_y.z·w"), Some("x-1_y.z·w".into()));
+    }
+    #[test]
+    fn avatar_style_accepts_name_and_presets() {
+        let mut s = Settings::default();
+        assert!(AVATAR_STYLES.contains(&s.avatar_style.as_str()));
+        s.avatar_style = "name".into();
+        assert!(s.validate().is_ok());
+        s.avatar_style = "unknown".into();
+        assert!(s.validate().is_err());
+    }
+    #[test]
     fn empty_server_and_topic_fall_back_to_defaults() {
         let mut s = Settings { server: "  ".into(), topic: "".into(), ..Settings::default() };
         s.normalize();
@@ -331,6 +377,14 @@ mod tests {
         s.server = "https://x.example/".into();
         s.normalize();
         assert_eq!(s.server, "https://x.example");
+    }
+    #[test]
+    fn old_messages_without_avatar_still_load() {
+        let m: Message = serde_json::from_str(
+            r#"{"id":"1","time":1,"title":"","body":"b","senderId":null,"senderName":null,"mine":false,"encrypted":true,"status":"ok"}"#,
+        )
+        .unwrap();
+        assert_eq!(m.sender_avatar, None);
     }
     #[test]
     fn old_templates_still_load() {

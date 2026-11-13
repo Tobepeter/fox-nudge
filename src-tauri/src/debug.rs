@@ -125,6 +125,8 @@ pub struct Inject {
     #[serde(default)]
     sender_name: Option<String>,
     #[serde(default)]
+    avatar: Option<String>,
+    #[serde(default)]
     encrypted: bool,
     /// 当作离线期间补收的消息，走合并提醒
     #[serde(default)]
@@ -150,7 +152,7 @@ pub fn debug_inject(app: AppHandle, message: Inject) -> Result<String, String> {
             &key,
             &crypto::Payload {
                 v: 1,
-                from: crypto::Sender { id: "debug-sender".into(), name },
+                from: crypto::Sender { id: "debug-sender".into(), name, avatar: message.avatar.unwrap_or_default() },
                 title: message.title,
                 body: message.body,
             },

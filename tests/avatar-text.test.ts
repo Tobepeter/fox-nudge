@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { avatarFontSize, avatarText } from '../src/lib/avatar-text.ts'
+import { avatarFontSize, avatarText, cleanName } from '../src/lib/avatar-text.ts'
 
 test('头像文字最多 4 个半角宽度：中文 2 个、英文 4 个', () => {
   const pick = (name: string) => {
@@ -22,4 +22,13 @@ test('字越多字号越小，单字不超过直径一半', () => {
   assert.ok(font('小狐') < font('狐'))
   assert.ok(font('tobe') < font('to'))
   assert.ok(font('小狐') >= 9, '两个中文字在 26px 头像里不小于 9px')
+})
+
+test('昵称清洗和 Rust 一致：过滤特殊字符、最多 16 个字、anonymous 回到兜底', () => {
+  assert.equal(cleanName('  tobe  '), 'tobe')
+  assert.equal(cleanName('Anonymous'), '')
+  assert.equal(cleanName('<script>小\n狐'), 'script小 狐')
+  assert.equal(cleanName('a\u200bb🦊c'), 'abc')
+  assert.equal([...cleanName('我的名字特别特别特别特别特别特别长')].length, 16)
+  assert.equal(cleanName('x-1_y.z·w'), 'x-1_y.z·w')
 })

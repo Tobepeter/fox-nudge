@@ -14,6 +14,6 @@ sound: string, notify: boolean, shortcut: string,
  */
 dockMode: string, theme: string, 
 /**
- * 程序化头像风格，按设备 ID 生成
+ * 头像：name 显示昵称文字，其余是按设备 ID 生成的预设风格；首次随机选一套预设
  */
 avatarStyle: string, launchAtLogin: boolean, };

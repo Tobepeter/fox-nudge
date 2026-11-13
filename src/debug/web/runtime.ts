@@ -5,6 +5,7 @@ import type { Settings } from '../../lib/bindings/Settings'
 import type { Template } from '../../lib/bindings/Template'
 import type { Message } from '../../lib/bindings/Message'
 import type { Connection } from '../../lib/bindings/Connection'
+import { ANONYMOUS, cleanName } from '../../lib/avatar-text.ts'
 
 type Listener = (value: unknown) => void
 export type Effect =
@@ -13,6 +14,8 @@ export type Effect =
   | { kind: 'log'; level: string; event: string }
   | { kind: 'open-logs' }
 
+const PRESETS = ['beam', 'marble', 'bauhaus', 'ring', 'pixel', 'sunset']
+const randomStyle = () => PRESETS[Math.floor(Math.random() * PRESETS.length)]
 const SOUNDS = ['Glass', 'Ping', 'Pop', 'Purr', 'Submarine', 'Hero', 'Funk', 'none']
 const BODY_LIMIT = 500
 
@@ -49,7 +52,8 @@ export class WebRuntime {
     const base = structuredClone(this.#initial)
     return {
       ...base,
-      identity: { id: randomId(12), name: 'anonymous' },
+      settings: { ...base.settings, avatarStyle: randomStyle() },
+      identity: { id: randomId(12), name: ANONYMOUS },
       templates: defaultTemplates(),
       messages: [],
       tokenSource: 'builtin',
@@ -128,6 +132,7 @@ export class WebRuntime {
     if (settings.topic && !/^[A-Za-z0-9_-]+$/.test(settings.topic))
       throw new Error('主题只能包含字母、数字、- 和 _')
     if (!SOUNDS.includes(settings.sound)) throw new Error('未知的提示音')
+    if (settings.avatarStyle !== 'name' && !PRESETS.includes(settings.avatarStyle)) throw new Error('未知的头像风格')
   }
 
   async command(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
@@ -141,6 +146,7 @@ export class WebRuntime {
         settings.topic = settings.topic.trim() || this.#initial.settings.topic
         settings.pollSeconds = Math.min(3600, Math.max(15, settings.pollSeconds))
         this.#validate(settings)
+        if (settings.avatarStyle === 'name' && this.state.identity.name === ANONYMOUS) settings.avatarStyle = randomStyle()
         const previous = this.state.settings
         const reconnect =
           settings.server !== previous.server ||
@@ -153,8 +159,10 @@ export class WebRuntime {
         return
       }
       case 'save_identity': {
-        const name = String(args.name ?? '').trim().slice(0, 24)
-        this.state.identity = { ...this.state.identity, name: name || 'anonymous' }
+        const name = cleanName(String(args.name ?? ''))
+        this.state.identity = { ...this.state.identity, name: name || ANONYMOUS }
+        // 回到兜底名字时，名字头像不能用，自动换成随机一套预设
+        if (!name && this.state.settings.avatarStyle === 'name') this.state.settings.avatarStyle = randomStyle()
         this.#changed()
         return
       }
@@ -204,6 +212,7 @@ export class WebRuntime {
           body,
           senderId: this.state.identity.id,
           senderName: this.state.identity.name,
+          senderAvatar: this.state.settings.avatarStyle,
           mine: true,
           encrypted: this.state.settings.encrypt,
           status: 'ok',
@@ -245,6 +254,7 @@ export class WebRuntime {
           encrypted?: boolean
           backlog?: boolean
           wrongKey?: boolean
+          avatar?: string
         }
         const undecryptable = !!input.wrongKey
         const message: Message = {
@@ -254,6 +264,7 @@ export class WebRuntime {
           body: undecryptable ? '' : input.body,
           senderId: undecryptable ? null : 'debug-sender',
           senderName: undecryptable ? null : (input.senderName ?? '调试'),
+          senderAvatar: undecryptable ? null : (input.avatar ?? null),
           mine: false,
           encrypted: !!input.encrypted || undecryptable,
           status: undecryptable ? 'undecryptable' : 'ok',
