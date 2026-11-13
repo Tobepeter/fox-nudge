@@ -262,33 +262,11 @@ export class WebRuntime {
         this.state.recentClearedAt = Number(args.at)
         this.#changed()
         return
-      case 'debug_fill_history': {
-        const texts = ['叮', '来一下', '吃饭啦', '好了', '收到', '马上到', '在吗', '下午三点开会别忘了', '构建完成，可以看了', '帮我看下这个报错', '今天早点走', '快递到了', '喝水', '会议改到明天上午', '这是一条比较长的消息，用来看历史里一行放不下的时候怎么截断显示，后面还有很多字']
-        const senders = [['debug-xiaoming', '小明', 'name'], ['debug-ahu', '阿狐', 'openPeeps'], ['debug-lucy', 'Lucy', 'notionists'], ['debug-tobe', 'tobe', 'lorelei'], ['debug-long-cn', '欧阳慕容东方西门北冥南宫上官司马', 'name'], ['debug-long-en', 'Alexander Wright', 'adventurer']]
-        texts.push('这是一条写满 500 字的消息，用来看历史和悬停提示在内容最长时的样子。'.repeat(20).slice(0, 500), '这条刚好一百个字，和文案的长度上限一样，用来看最近发过和文案两边在内容最长时怎么截断。'.repeat(3).slice(0, 100))
-        const now = Math.floor(Date.now() / 1000)
-        const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)]
-        for (let i = 0; i < Number(args.count); i++) {
-          const roll = Math.floor(Math.random() * 10)
-          const [senderId, senderName, senderAvatar] =
-            roll < 3 ? [this.state.identity.id, this.state.identity.name, this.state.settings.avatarStyle] : roll === 3 ? [null, null, null] : pick(senders)
-          this.state.messages.push({
-            id: `debug-fill-${randomId(8)}-${i}`,
-            time: now - 60 - Math.floor(Math.random() * (30 * 86400 - 3660)),
-            title: '',
-            body: pick(texts),
-            senderId,
-            senderName,
-            senderAvatar,
-            mine: roll < 3,
-            encrypted: true,
-            status: 'ok',
-          })
-        }
-        this.state.messages.sort((a, b) => a.time - b.time)
-        this.#prune()
+      case 'debug_clear_mock': {
+        const before = this.state.messages.length
+        this.state.messages = this.state.messages.filter((m) => !m.id.startsWith('debug-'))
         this.#changed()
-        return this.state.messages.length
+        return before - this.state.messages.length
       }
       case 'clear_history':
         this.state.messages = []
@@ -321,16 +299,13 @@ export class WebRuntime {
           wrongKey?: boolean
           avatar?: string
           senderId?: string
-          anonymous?: boolean
-          ago?: number
-          silent?: boolean
         }
         const undecryptable = !!input.wrongKey
-        const unknown = undecryptable || (!!input.anonymous && !input.encrypted)
+        const unknown = undecryptable
         const senderId = input.senderId ?? 'debug-sender'
         const message: Message = {
           id: `debug-${randomId(10)}`,
-          time: Math.floor(Date.now() / 1000) - (input.ago ?? (input.backlog ? 600 : 0)),
+          time: Math.floor(Date.now() / 1000) - (input.backlog ? 600 : 0),
           title: undecryptable ? '' : (input.title ?? ''),
           body: undecryptable ? '' : input.body,
           senderId: unknown ? null : senderId,
@@ -341,7 +316,7 @@ export class WebRuntime {
           status: undecryptable ? 'undecryptable' : 'ok',
         }
         this.#push(message)
-        if (input.silent || message.mine) return message.id
+        if (message.mine) return message.id
         if (this.state.settings.notify)
           this.effects.push({
             kind: 'notification',

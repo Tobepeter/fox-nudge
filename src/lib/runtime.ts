@@ -23,9 +23,6 @@ export type InjectMessage = {
   wrongKey?: boolean
   avatar?: string
   senderId?: string
-  anonymous?: boolean
-  ago?: number
-  silent?: boolean
 }
 
 // DEV 动态入口在生产构建中整体剔除
@@ -75,8 +72,8 @@ export const api = {
     import.meta.env.DEV ? call<string>('debug_inject', { message }) : Promise.reject(new Error('仅开发版可用')),
   debugDisconnect: () =>
     import.meta.env.DEV ? call('debug_disconnect') : Promise.reject(new Error('仅开发版可用')),
-  debugFillHistory: (count: number) =>
-    import.meta.env.DEV ? call<number>('debug_fill_history', { count }) : Promise.reject(new Error('仅开发版可用')),
+  debugClearMock: () =>
+    import.meta.env.DEV ? call<number>('debug_clear_mock') : Promise.reject(new Error('仅开发版可用')),
 }
 
 export const events = {

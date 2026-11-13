@@ -402,7 +402,7 @@ fn main() {
         debug::debug_reply,
         debug::debug_inject,
         debug::debug_disconnect,
-        debug::debug_fill_history,
+        debug::debug_clear_mock,
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
