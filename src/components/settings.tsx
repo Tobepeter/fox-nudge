@@ -198,10 +198,15 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
       </Section>
       <Section title='提醒'>
         <Row label='系统通知'>
-          <Button variant='ghost' size='sm' disabled={disabled} onClick={() => void api.testNotification().catch(() => {})}>
-            测试
-          </Button>
-          <Switch checked={settings.notify} disabled={disabled} onCheckedChange={(notify) => set({ notify })} />
+          <Switch
+            checked={settings.notify}
+            disabled={disabled}
+            onCheckedChange={(notify) => {
+              set({ notify })
+              // 打开时顺手弹一条示例，确认系统通知能出来
+              if (notify) void api.testNotification().catch(() => {})
+            }}
+          />
         </Row>
         <Row label='提示音'>
           <Choice label='提示音' value={settings.sound} options={sounds} onChange={(sound) => set({ sound })} onHover={preview} disabled={disabled} />

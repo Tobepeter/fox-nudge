@@ -101,7 +101,6 @@ pub fn show(app: &tauri::AppHandle) {
 
 /// 后台发送失败时窗口可能看不见，用通知告诉用户
 pub fn alert_error(app: &tauri::AppHandle, text: &str) {
-    use tauri_plugin_notification::NotificationExt;
     let visible = app
         .get_webview_window("main")
         .and_then(|w| w.is_visible().ok())
@@ -109,7 +108,7 @@ pub fn alert_error(app: &tauri::AppHandle, text: &str) {
     if visible {
         let _ = app.emit("error", text);
     } else {
-        let _ = app.notification().builder().title("发送失败").body(text).show();
+        alert::notify(app, "发送失败", text);
     }
 }
 
@@ -347,13 +346,7 @@ fn test_sound(sound: String) {
 
 #[tauri::command]
 fn test_notification(app: tauri::AppHandle) {
-    use tauri_plugin_notification::NotificationExt;
-    let _ = app
-        .notification()
-        .builder()
-        .title("FoxNudge")
-        .body("这是一条测试通知")
-        .show();
+    alert::notify(&app, "FoxNudge", "系统通知已开启");
 }
 
 /// 前端只上报自己的 warn / error，经同一份脱敏写入日志

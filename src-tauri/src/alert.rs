@@ -45,13 +45,36 @@ pub fn backlog(app: &AppHandle, messages: &[Message]) {
 }
 
 fn show(app: &AppHandle, title: &str, body: &str) {
-    let (notify, sound) = settings(app);
-    if notify {
-        if let Err(e) = app.notification().builder().title(title).body(body).show() {
-            log::warn("alert", "notification-failed", json!({ "error": e.to_string() }));
-        }
+    let (enabled, sound) = settings(app);
+    if enabled {
+        notify(app, title, body);
     }
     play(&sound);
+}
+
+/// 弹一条系统通知。
+/// 开发版没有 .app 包，通知插件会借用「终端」的身份，终端没有通知授权时系统直接丢弃，
+/// 所以开发版改用系统自带的 osascript 弹（显示为「脚本编辑器」）；安装版走插件，用 FoxNudge 自己的身份
+pub fn notify(app: &AppHandle, title: &str, body: &str) {
+    if cfg!(debug_assertions) {
+        let (title, body) = (title.to_string(), body.to_string());
+        std::thread::spawn(move || {
+            // 标题和正文作为参数传入，不拼进脚本，免去转义
+            let result = std::process::Command::new("/usr/bin/osascript")
+                .args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run"])
+                .args([&title, &body])
+                .output();
+            match result {
+                Ok(out) if out.status.success() => {}
+                Ok(out) => log::warn("alert", "notification-failed", json!({ "error": String::from_utf8_lossy(&out.stderr).trim() })),
+                Err(e) => log::warn("alert", "notification-failed", json!({ "error": e.to_string() })),
+            }
+        });
+        return;
+    }
+    if let Err(e) = app.notification().builder().title(title).body(body).show() {
+        log::warn("alert", "notification-failed", json!({ "error": e.to_string() }));
+    }
 }
 
 /// 用系统自带的提示音，afplay 在后台线程里跑完并回收
