@@ -12,4 +12,8 @@ sound: string, notify: boolean, shortcut: string,
 /**
  * window：主窗口打开时显示；always；never
  */
-dockMode: string, theme: string, launchAtLogin: boolean, };
+dockMode: string, theme: string, 
+/**
+ * 程序化头像风格，按设备 ID 生成
+ */
+avatarStyle: string, launchAtLogin: boolean, };

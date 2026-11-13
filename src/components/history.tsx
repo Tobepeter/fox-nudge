@@ -1,6 +1,7 @@
 import { Trash2 } from 'lucide-react'
 import { ConfirmAction } from './confirm-action'
-import type { Message } from '../lib/runtime'
+import { Avatar } from './avatar'
+import type { Identity, Message } from '../lib/runtime'
 
 function when(seconds: number) {
   const date = new Date(seconds * 1000)
@@ -9,7 +10,13 @@ function when(seconds: number) {
   return today ? time : `${date.getMonth() + 1}-${date.getDate()} ${time}`
 }
 
-export function History(props: { messages: Message[]; clear: () => Promise<boolean>; disabled: boolean }) {
+export function History(props: {
+  messages: Message[]
+  identity: Identity
+  avatarStyle: string
+  clear: () => Promise<boolean>
+  disabled: boolean
+}) {
   // 最新的在上面
   const messages = [...props.messages].reverse()
   return (
@@ -37,7 +44,15 @@ export function History(props: { messages: Message[]; clear: () => Promise<boole
               return (
                 <li key={m.id} data-message-id={m.id} className='flex items-baseline gap-3 py-1.5' title={text}>
                   <span className='w-20 shrink-0 text-muted-foreground tabular-nums'>{when(m.time)}</span>
-                  <span className='w-20 shrink-0 truncate text-muted-foreground'>{m.mine ? '我' : m.senderName || '—'}</span>
+                  <span className='flex w-28 shrink-0 items-center gap-2 self-center text-muted-foreground'>
+                    <Avatar
+                      id={m.mine ? props.identity.id : m.senderId}
+                      name={m.mine ? props.identity.name : m.senderName}
+                      style={props.avatarStyle}
+                      size={24}
+                    />
+                    <span className='truncate'>{m.mine ? '我' : m.senderName || '—'}</span>
+                  </span>
                   <span className={`min-w-0 flex-1 truncate ${m.status === 'undecryptable' ? 'text-muted-foreground' : ''}`}>{text}</span>
                 </li>
               )

@@ -13,6 +13,7 @@ export const initial: Snapshot = {
     shortcut: 'Control+Alt+N',
     dockMode: 'window',
     theme: 'system',
+    avatarStyle: 'beam',
     launchAtLogin: false,
   },
   identity: { id: '', name: 'anonymous' },

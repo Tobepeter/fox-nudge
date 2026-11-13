@@ -25,6 +25,8 @@ pub struct Settings {
     /// window：主窗口打开时显示；always；never
     pub dock_mode: String,
     pub theme: String,
+    /// 程序化头像风格，按设备 ID 生成
+    pub avatar_style: String,
     pub launch_at_login: bool,
 }
 impl Default for Settings {
@@ -40,10 +42,12 @@ impl Default for Settings {
             shortcut: "Control+Alt+N".into(),
             dock_mode: "window".into(),
             theme: "system".into(),
+            avatar_style: "beam".into(),
             launch_at_login: false,
         }
     }
 }
+pub const AVATAR_STYLES: [&str; 6] = ["beam", "marble", "bauhaus", "ring", "pixel", "sunset"];
 pub const SOUNDS: [&str; 8] = [
     "Glass", "Ping", "Pop", "Purr", "Submarine", "Hero", "Funk", "none",
 ];
@@ -86,6 +90,9 @@ impl Settings {
         }
         if !matches!(self.dock_mode.as_str(), "window" | "always" | "never") {
             return Err("未知的 Dock 显示方式".into());
+        }
+        if !AVATAR_STYLES.contains(&self.avatar_style.as_str()) {
+            return Err("未知的头像风格".into());
         }
         if !matches!(self.theme.as_str(), "system" | "light" | "dark") {
             return Err("未知的外观".into());

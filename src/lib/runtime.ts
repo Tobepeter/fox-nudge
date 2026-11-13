@@ -6,7 +6,8 @@ import type { Settings } from './bindings/Settings'
 import type { Template } from './bindings/Template'
 import type { Message } from './bindings/Message'
 import type { Connection } from './bindings/Connection'
-export type { Snapshot, Settings, Template, Message, Connection }
+import type { Identity } from './bindings/Identity'
+export type { Snapshot, Settings, Template, Message, Connection, Identity }
 
 export const desktop = isTauri()
 // 浏览器 DEV 走模拟运行时，正式构建的浏览器页面只读

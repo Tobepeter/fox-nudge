@@ -6,6 +6,7 @@ import { Input } from './ui/input'
 import { Switch } from './ui/switch'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 import { Choice } from './choice'
+import { Avatar, avatarStyles } from './avatar'
 import { ClearableInput } from './clearable-input'
 import { ConfirmAction } from './confirm-action'
 import { HelpTip } from './help-tip'
@@ -148,7 +149,26 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
   return (
     <>
       <Section title='身份'>
+        <Row label='头像' help='按设备 ID 自动生成；设了昵称就显示昵称，中文最多 2 个字、英文 4 个'>
+          <div className='flex gap-1' role='radiogroup' aria-label='头像风格'>
+            {avatarStyles.map((option) => (
+              <Tip key={option.value} content={option.label}>
+                <button
+                  role='radio'
+                  aria-checked={settings.avatarStyle === option.value}
+                  aria-label={option.label}
+                  disabled={disabled}
+                  onClick={() => set({ avatarStyle: option.value })}
+                  className={`rounded-full p-0.5 ring-2 transition-shadow ${settings.avatarStyle === option.value ? 'ring-primary' : 'ring-transparent hover:ring-border'}`}
+                >
+                  <Avatar id={snapshot.identity.id} style={option.value} size={26} />
+                </button>
+              </Tip>
+            ))}
+          </div>
+        </Row>
         <Row label='昵称'>
+          <Avatar id={snapshot.identity.id} name={snapshot.identity.name} style={settings.avatarStyle} size={26} />
           <TextSetting value={snapshot.identity.name} fallback='anonymous' maxLength={24} disabled={disabled} onSave={(name) => void run(() => api.saveIdentity(name))} />
         </Row>
       </Section>
@@ -267,10 +287,6 @@ function Advanced({ snapshot, disabled, set, run }: PanelProps) {
           />
         </div>
       </Section>
-      <p className='text-muted-foreground'>
-        {snapshot.version}
-        {snapshot.dev ? ' dev' : ''} · {snapshot.identity.id}
-      </p>
     </>
   )
 }

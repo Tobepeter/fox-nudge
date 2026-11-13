@@ -201,7 +201,11 @@ export function App() {
             />
           )}
           {page === 'history' && (
-            <History messages={snapshot.messages} clear={() => run(api.clearHistory)} disabled={!available || working} />
+            <History
+              messages={snapshot.messages}
+              identity={snapshot.identity}
+              avatarStyle={snapshot.settings.avatarStyle}
+              clear={() => run(api.clearHistory)} disabled={!available || working} />
           )}
           {page === 'settings' && (
             <Settings snapshot={snapshot} disabled={!available || working} save={save} run={run} />
