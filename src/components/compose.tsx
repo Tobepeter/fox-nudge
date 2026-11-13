@@ -13,6 +13,7 @@ import {
   Pencil,
   Pin,
   Plus,
+  RotateCcw,
   SendHorizontal,
   Trash2,
 } from 'lucide-react'
@@ -48,12 +49,13 @@ const LIMIT = 10
 const TEXT_LIMIT = 100
 const UNDO_MS = 5000
 // 通知里的文案太长时截短
-const short = (text: string) => ([...text].length > 12 ? `${[...text].slice(0, 12).join('')}…` : text)
+const short = (text: string) =>
+  [...text].length > 12 ? `${[...text].slice(0, 12).join('')}…` : text
 const SENT_MS = 1200
 // 只允许上下拖
 const vertical: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 // 行内按钮和输入框共用的尺寸与字重，切换编辑时文字位置、大小完全一致
-const FIELD = 'h-9 min-w-0 flex-1 px-3 font-normal'
+const FIELD = 'h-8 min-w-0 flex-1 px-3 font-normal'
 
 /** 发送反馈：正在发的那条转圈，发完短暂打勾；不禁用其他行，避免整列闪动 */
 type Feedback = { id: string; state: 'sending' | 'sent' } | null
@@ -112,11 +114,11 @@ function Line(props: {
     <div
       className={`flex items-center gap-1 ${props.dragging ? 'relative z-10' : ''}`}
     >
-      <span className='flex size-8 shrink-0 items-center justify-center'>
+      <span className='flex size-7 shrink-0 items-center justify-center'>
         {props.handle}
       </span>
       {props.children}
-      <span className='flex size-9 shrink-0 items-center justify-center'>
+      <span className='flex size-7 shrink-0 items-center justify-center'>
         {props.side}
       </span>
     </div>
@@ -148,7 +150,7 @@ function Row(props: {
         handle={
           <button
             aria-label='拖动排序'
-            className='flex size-8 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground/40 group-hover:text-muted-foreground hover:bg-muted active:cursor-grabbing'
+            className='flex size-7 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground/40 group-hover:text-muted-foreground hover:bg-muted active:cursor-grabbing'
             {...sortable.attributes}
             {...sortable.listeners}
           >
@@ -160,7 +162,7 @@ function Row(props: {
             <Tip content='删除'>
               <Button
                 variant='ghost'
-                size='icon'
+                size='icon-sm'
                 aria-label='删除'
                 className='text-muted-foreground hover:text-destructive'
                 onClick={props.remove}
@@ -186,6 +188,23 @@ function Row(props: {
         )}
       </Line>
     </li>
+  )
+}
+
+// 卡片：标题行放这块内容自己的操作（图标），内容是一列行
+function Card(props: {
+  title: string
+  action?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className='rounded-xl border p-1.5'>
+      <div className='flex h-7 items-center justify-between pr-0.5 pl-2'>
+        <h3 className='text-muted-foreground'>{props.title}</h3>
+        <div className='flex items-center'>{props.action}</div>
+      </div>
+      <div className='space-y-1 pt-1'>{props.children}</div>
+    </section>
   )
 }
 
@@ -337,125 +356,128 @@ export function Compose(props: {
       undo: () => void props.setRecentCleared(previous),
     })
   }
+  const presetsAction = (
+    <>
+      {editing && (
+        <ConfirmAction
+          label='恢复默认'
+          description='恢复默认文案？当前文案会被替换'
+          success='已恢复默认文案'
+          icon={<RotateCcw />}
+          ghost
+          onConfirm={props.resetTemplates}
+        />
+      )}
+      <Tip content={editing ? '完成' : '编辑文案'}>
+        <Button
+          variant={editing ? 'secondary' : 'ghost'}
+          size='icon-sm'
+          aria-label={editing ? '完成' : '编辑文案'}
+          aria-pressed={editing}
+          disabled={props.disabled || (!editing && items.length === 0)}
+          onClick={() => props.setEditing(!editing)}
+        >
+          {editing ? <Check /> : <Pencil />}
+        </Button>
+      </Tip>
+    </>
+  )
   return (
-    <section className='flex min-h-0 flex-1 flex-col gap-4'>
+    <section className='flex min-h-0 flex-1 flex-col gap-3'>
       <UndoNotice pending={undo} onExpire={clearUndo} />
-      <div className='flex shrink-0 items-center justify-between gap-3'>
-        <div className='flex min-w-0 items-center gap-3'>
-          <h2 className='font-medium'>发送</h2>
-          <ConnectionStatus
-            connection={snapshot.connection}
-            onReconnect={props.reconnect}
-          />
-        </div>
-        {/* 编辑和完成用同尺寸图标切换；恢复默认只在编辑时出现在左边 */}
-        <div className='flex items-center gap-1'>
-          {editing && (
-            <ConfirmAction
-              label='恢复默认'
-              description='恢复默认文案？当前文案会被替换'
-              success='已恢复默认文案'
-              trigger={
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='text-muted-foreground'
-                >
-                  恢复默认
-                </Button>
-              }
-              onConfirm={props.resetTemplates}
-            />
-          )}
-          <Tip content={editing ? '完成' : '编辑文案'}>
-            <Button
-              variant={editing ? 'secondary' : 'ghost'}
-              size='icon-sm'
-              aria-label={editing ? '完成' : '编辑文案'}
-              aria-pressed={editing}
-              disabled={props.disabled || (!editing && items.length === 0)}
-              onClick={() => props.setEditing(!editing)}
-            >
-              {editing ? <Check /> : <Pencil />}
-            </Button>
-          </Tip>
-        </div>
+      <div className='flex h-7 shrink-0 items-center gap-3'>
+        <h2 className='font-medium'>发送</h2>
+        <ConnectionStatus
+          connection={snapshot.connection}
+          onReconnect={props.reconnect}
+        />
       </div>
-      <div className='app-scroll -mx-4 min-h-0 flex-1 overflow-y-auto px-4'>
-        <div className='max-w-md space-y-1.5 pb-1'>
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            modifiers={[vertical]}
-            onDragEnd={onDragEnd}
-          >
-            <SortableContext
-              items={items.map((t) => t.id)}
-              strategy={verticalListSortingStrategy}
+      {/* 内容区够宽时左右两张卡片，窄时上下排；两张卡片在编辑、为空时都保持原位，布局不跳 */}
+      <div className='app-scroll @container -mx-4 min-h-0 flex-1 overflow-y-auto px-4'>
+        <div className='grid grid-cols-1 items-start gap-3 pb-1 @lg:grid-cols-2'>
+          <Card title='文案' action={presetsAction}>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              modifiers={[vertical]}
+              onDragEnd={onDragEnd}
             >
-              <ul className='space-y-1.5'>
-                {items.map((item) => (
-                  <Row
-                    key={item.id}
-                    item={item}
-                    editing={editing}
-                    feedback={feedback}
-                    send={() => void send(item.id, item.text)}
-                    update={(text) =>
-                      save(
-                        items.map((t) =>
-                          t.id === item.id ? { ...t, text } : t,
-                        ),
-                      )
-                    }
-                    remove={() => remove(item)}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
-          {/* 添加常驻在最后一行，点一下原地变输入框，回车后可以接着输下一条 */}
-          {items.length < LIMIT && (
-            <Line>
-              {adding ? (
-                <TextField
-                  value=''
-                  autoFocus
-                  keepOpen
-                  placeholder='输入文案，回车添加'
-                  onSubmit={add}
-                  onCancel={() => setAdding(false)}
-                />
-              ) : (
-                <Button
-                  variant='outline'
-                  className={`${FIELD} justify-start border-dashed bg-transparent text-muted-foreground shadow-none`}
-                  disabled={props.disabled}
-                  onClick={() => setAdding(true)}
-                >
-                  <Plus />
-                  添加文案
-                </Button>
-              )}
-            </Line>
-          )}
-          {/* 最近发过：自己发过的自定义消息，单击重发；清空只隐藏，不删历史，5 秒内可撤销 */}
-          {!editing && recent.length > 0 && (
-            <section className='space-y-1.5 pt-4'>
+              <SortableContext
+                items={items.map((t) => t.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className='space-y-1'>
+                  {items.map((item) => (
+                    <Row
+                      key={item.id}
+                      item={item}
+                      editing={editing}
+                      feedback={feedback}
+                      send={() => void send(item.id, item.text)}
+                      update={(text) =>
+                        save(
+                          items.map((t) =>
+                            t.id === item.id ? { ...t, text } : t,
+                          ),
+                        )
+                      }
+                      remove={() => remove(item)}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+            {/* 添加常驻在最后一行，点一下原地变输入框，回车后可以接着输下一条 */}
+            {items.length < LIMIT && (
               <Line>
-                <div className='flex min-w-0 flex-1 items-center justify-between'>
-                  <h3 className='text-muted-foreground'>最近发过</h3>
+                {adding ? (
+                  <TextField
+                    value=''
+                    autoFocus
+                    keepOpen
+                    placeholder='输入文案，回车添加'
+                    onSubmit={add}
+                    onCancel={() => setAdding(false)}
+                  />
+                ) : (
+                  <Button
+                    variant='outline'
+                    className={`${FIELD} border-dashed bg-transparent text-muted-foreground shadow-none`}
+                    aria-label='添加文案'
+                    disabled={props.disabled}
+                    onClick={() => setAdding(true)}
+                  >
+                    <Plus />
+                  </Button>
+                )}
+              </Line>
+            )}
+          </Card>
+          {/* 最近发过：自己发过的消息，单击重发，图钉固定为文案；清空只隐藏，不删历史，5 秒内可撤销 */}
+          <Card
+            title='最近发过'
+            action={
+              recent.length > 0 && (
+                <Tip content='清空'>
                   <Button
                     variant='ghost'
-                    size='sm'
+                    size='icon-sm'
+                    aria-label='清空最近发过'
                     className='text-muted-foreground'
                     onClick={clearRecent}
                   >
-                    清空
+                    <Trash2 />
                   </Button>
-                </div>
-              </Line>
-              <ul className='space-y-1.5'>
+                </Tip>
+              )
+            }
+          >
+            {recent.length === 0 ? (
+              <p className='px-2 pb-1.5 text-muted-foreground/70'>
+                自定义发过的消息会出现在这里
+              </p>
+            ) : (
+              <ul className='space-y-1'>
                 {recent.map((text) => {
                   const id = `recent:${text}`
                   const status = feedback?.id === id ? feedback.state : null
@@ -467,7 +489,7 @@ export function Compose(props: {
                           <Tip content='固定为文案'>
                             <button
                               aria-label='固定为文案'
-                              className='flex size-8 items-center justify-center rounded-md text-muted-foreground/50 hover:bg-muted hover:text-foreground'
+                              className='flex size-7 items-center justify-center rounded-md text-muted-foreground/50 hover:bg-muted hover:text-foreground'
                               onClick={() => pin(text)}
                             >
                               <Pin className='size-4' />
@@ -487,8 +509,8 @@ export function Compose(props: {
                   )
                 })}
               </ul>
-            </section>
-          )}
+            )}
+          </Card>
         </div>
       </div>
       <div className='flex shrink-0 items-end gap-2'>
