@@ -8,7 +8,7 @@ mode: string, pollSeconds: number,
 /**
  * 系统提示音名，none 为静音
  */
-sound: string, notify: boolean, shortcut: string, 
+sound: string, notify: boolean, 
 /**
  * window：主窗口打开时显示；always；never
  */

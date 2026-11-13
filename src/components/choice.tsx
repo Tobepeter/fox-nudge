@@ -11,6 +11,8 @@ export type ChoiceProps = {
   onChange: (value: string) => void
   label: string
   disabled?: boolean
+  // 鼠标停在选项上时回调，比如试听提示音
+  onHover?: (value: string) => void
 }
 export function Choice(props: ChoiceProps) {
   return (
@@ -26,7 +28,7 @@ export function Choice(props: ChoiceProps) {
       </SelectTrigger>
       <SelectContent>
         {props.options.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
+          <SelectItem key={item.value} value={item.value} onPointerEnter={() => props.onHover?.(item.value)}>
             {item.label}
           </SelectItem>
         ))}

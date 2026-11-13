@@ -1,19 +1,18 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { WebRuntime } from '../src/debug/web/runtime.ts'
+import { cooldown, WebRuntime } from '../src/debug/web/runtime.ts'
 import type { Snapshot } from '../src/lib/bindings/Snapshot.ts'
 import type { Message } from '../src/lib/bindings/Message.ts'
 
 const initial: Snapshot = {
   settings: {
-    server: 'https://notify.tobeei.com',
-    topic: 'notify-main',
+    server: '',
+    topic: '',
     encrypt: true,
     mode: 'stream',
     pollSeconds: 60,
     sound: 'Glass',
     notify: true,
-    shortcut: 'Control+Alt+N',
     dockMode: 'window',
     theme: 'system',
     avatarStyle: 'beam',
@@ -23,6 +22,8 @@ const initial: Snapshot = {
   templates: [],
   messages: [],
   connection: { state: 'connecting', mode: 'stream', connectedAt: null, lastEventAt: null, attempts: 0, retryAt: null, error: '' },
+  serverSource: 'none',
+  topicSource: 'none',
   tokenSource: 'none',
   keySource: 'none',
   version: '0.1.0',
@@ -104,14 +105,15 @@ test('设置校验与改主题重连', async () => {
   const s = await snapshot(rt)
   await assert.rejects(rt.command('save_settings', { settings: { ...s.settings, topic: 'bad topic' } }), /主题/)
   await assert.rejects(rt.command('save_settings', { settings: { ...s.settings, server: 'ftp://x' } }), /https/)
+  assert.equal(s.serverSource, 'builtin')
   await rt.command('save_settings', { settings: { ...s.settings, topic: 'notify-test', server: 'https://x/' } })
   const next = await snapshot(rt)
   assert.equal(next.settings.server, 'https://x')
+  assert.equal(next.serverSource, 'custom')
   assert.equal(next.connection.state, 'connecting')
   await rt.command('save_settings', { settings: { ...next.settings, server: '', topic: ' ' } })
   const cleared = await snapshot(rt)
-  assert.equal(cleared.settings.server, 'https://notify.tobeei.com', '清空地址回到默认')
-  assert.equal(cleared.settings.topic, 'notify-main')
+  assert.deepEqual([cleared.settings.server, cleared.serverSource, cleared.topicSource], ['', 'builtin', 'builtin'], '清空回到内置')
   rt.dispose()
 })
 
@@ -136,7 +138,7 @@ test('重置设置保留昵称和文案，恢复默认文案', async () => {
   await rt.command('reset_settings')
   let next = await snapshot(rt)
   assert.equal(next.settings.sound, 'Glass')
-  assert.equal(next.settings.topic, 'notify-main')
+  assert.equal(next.settings.topic, '')
   assert.equal(next.identity.name, 'tobe')
   assert.deepEqual(next.templates.map((t) => t.text), ['自定义'])
   await rt.command('reset_templates')
@@ -161,5 +163,14 @@ test('头像：首次随机预设；清空昵称时名字头像自动回退到�
   assert.notEqual(s.settings.avatarStyle, 'name')
   const sent = (await rt.command('send', { title: '', body: 'hi' })) as Message
   assert.equal(sent.senderAvatar, s.settings.avatarStyle)
+  rt.dispose()
+})
+
+test('发送节流：连发 3 条不限，之后冷却，最长 30 秒', async () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map(cooldown), [0, 0, 0, 2000, 4000, 8000, 16000, 30000, 30000])
+  const rt = new WebRuntime(initial, { connectMs: 5 })
+  await wait(20)
+  for (let i = 0; i < 4; i++) await rt.command('send', { body: `m${i}` })
+  await assert.rejects(rt.command('send', { body: 'too fast' }), /太快/)
   rt.dispose()
 })

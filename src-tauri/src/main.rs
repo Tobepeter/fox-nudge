@@ -5,6 +5,7 @@ mod data;
 mod debug;
 mod log;
 mod ntfy;
+mod throttle;
 mod tray;
 
 use data::{Data, Identity, Message, Secrets, Settings, Template};
@@ -13,7 +14,6 @@ use serde_json::json;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::ManagerExt as _;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 pub struct AppState {
     pub data: Mutex<Data>,
@@ -30,11 +30,24 @@ struct Snapshot {
     templates: Vec<Template>,
     messages: Vec<Message>,
     connection: ntfy::Connection,
-    /// custom：设置里填的；builtin：构建时内置；none：没有
+    /// 以下来源：custom 设置里填的；builtin 构建时内置；none 没有
+    server_source: String,
+    topic_source: String,
     token_source: String,
     key_source: String,
     version: String,
     dev: bool,
+}
+
+fn source(custom: &str, builtin: Option<&str>) -> String {
+    if !custom.trim().is_empty() {
+        "custom"
+    } else if builtin.is_some() {
+        "builtin"
+    } else {
+        "none"
+    }
+    .into()
 }
 
 fn snapshot(app: &tauri::AppHandle) -> Snapshot {
@@ -42,12 +55,16 @@ fn snapshot(app: &tauri::AppHandle) -> Snapshot {
     let data = state.data.lock().unwrap().clone();
     let secrets = state.secrets.lock().unwrap().clone();
     let connection = state.hub.status.lock().unwrap().clone();
+    let server_source = source(&data.settings.server, ntfy::builtin_server());
+    let topic_source = source(&data.settings.topic, ntfy::builtin_topic());
     Snapshot {
         settings: data.settings,
         identity: data.identity,
         templates: data.templates,
         messages: data.messages,
         connection,
+        server_source,
+        topic_source,
         token_source: if !secrets.token.trim().is_empty() {
             "custom"
         } else if ntfy::builtin_token().is_some() {
@@ -116,17 +133,6 @@ fn apply_theme(app: &tauri::AppHandle, theme: &str) {
     }
 }
 
-fn register_shortcut(app: &tauri::AppHandle, previous: Option<&str>, next: &str) -> Result<(), String> {
-    let shortcuts = app.global_shortcut();
-    if let Some(previous) = previous.filter(|p| !p.is_empty()) {
-        let _ = shortcuts.unregister(previous);
-    }
-    if next.is_empty() {
-        return Ok(());
-    }
-    shortcuts.register(next).map_err(|e| format!("快捷键注册失败：{e}"))
-}
-
 fn save(app: &tauri::AppHandle, update: impl FnOnce(&mut Data)) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut data = state.data.lock().unwrap();
@@ -150,12 +156,6 @@ fn save_settings(app: tauri::AppHandle, mut settings: Settings) -> Result<(), St
     if anonymous && settings.avatar_style == "name" {
         settings.avatar_style = data::random_style();
     }
-    if !settings.shortcut.is_empty() {
-        settings
-            .shortcut
-            .parse::<Shortcut>()
-            .map_err(|_| "快捷键格式不对，例如 Control+Alt+N")?;
-    }
     let previous = app.state::<AppState>().data.lock().unwrap().settings.clone();
     if settings.launch_at_login != previous.launch_at_login {
         if tauri::is_dev() && settings.launch_at_login {
@@ -168,9 +168,6 @@ fn save_settings(app: tauri::AppHandle, mut settings: Settings) -> Result<(), St
             autolaunch.disable()
         }
         .map_err(|e| format!("登录启动设置失败：{e}"))?;
-    }
-    if settings.shortcut != previous.shortcut {
-        register_shortcut(&app, Some(&previous.shortcut), &settings.shortcut)?;
     }
     // 只记改了哪些项，不记值
     let (Ok(serde_json::Value::Object(a)), Ok(serde_json::Value::Object(b))) =
@@ -309,7 +306,6 @@ fn clear_history(app: tauri::AppHandle) -> Result<(), String> {
 /// 清除数据：身份、模板、历史、设置和凭据都回到初始状态，日志一并删除
 #[tauri::command]
 fn wipe_data(app: tauri::AppHandle) -> Result<(), String> {
-    let previous_shortcut = app.state::<AppState>().data.lock().unwrap().settings.shortcut.clone();
     if !tauri::is_dev() {
         let _ = app.autolaunch().disable();
     }
@@ -319,14 +315,12 @@ fn wipe_data(app: tauri::AppHandle) -> Result<(), String> {
     }
     let fresh = Data::default();
     data::save(&fresh)?;
-    let shortcut = fresh.settings.shortcut.clone();
     let theme = fresh.settings.theme.clone();
     {
         let state = app.state::<AppState>();
         *state.data.lock().unwrap() = fresh;
         *state.secrets.lock().unwrap() = Secrets::default();
     }
-    let _ = register_shortcut(&app, Some(&previous_shortcut), &shortcut);
     apply_theme(&app, &theme);
     log::info("data", "wiped", json!({}));
     app.state::<AppState>().hub.restart("wipe");
@@ -381,18 +375,7 @@ fn main() {
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
-        ))
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _, event| {
-                    if event.state == ShortcutState::Pressed {
-                        show(app);
-                        let _ = app.emit("navigate", "send");
-                        let _ = app.emit("compose", ());
-                    }
-                })
-                .build(),
-        );
+        ));
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         get_snapshot,
@@ -441,7 +424,6 @@ fn main() {
             data::init(app.path().app_data_dir()?);
             let data = data::read();
             let _ = data::save(&data);
-            let shortcut = data.settings.shortcut.clone();
             let theme = data.settings.theme.clone();
             app.manage(AppState {
                 data: Mutex::new(data),
@@ -457,9 +439,6 @@ fn main() {
                     "hidden": hidden,
                 }),
             );
-            if let Err(e) = register_shortcut(&handle, None, &shortcut) {
-                log::warn("main", "shortcut-failed", json!({ "error": e }));
-            }
             apply_theme(&handle, &theme);
             tray::init(&handle)?;
             ntfy::start(handle.clone());

@@ -37,6 +37,7 @@ pub struct Hub {
     pub status: Mutex<Connection>,
     restart: watch::Sender<u64>,
     backlog: Mutex<Vec<Message>>,
+    throttle: Mutex<crate::throttle::Throttle>,
     client: reqwest::Client,
 }
 impl Default for Hub {
@@ -48,6 +49,7 @@ impl Default for Hub {
             }),
             restart: watch::channel(0).0,
             backlog: Mutex::new(vec![]),
+            throttle: Mutex::default(),
             client: reqwest::Client::builder()
                 .user_agent(concat!("FoxNudge/", env!("CARGO_PKG_VERSION")))
                 .connect_timeout(Duration::from_secs(10))
@@ -73,6 +75,14 @@ struct Config {
     poll_seconds: u32,
 }
 
+/// 构建时注入的默认地址、主题（来自 sops 解密出的 .env）；解不开就没有，用户自己填
+pub fn builtin_server() -> Option<&'static str> {
+    option_env!("FOX_NUDGE_DEFAULT_SERVER").map(|s| s.trim().trim_end_matches('/')).filter(|s| !s.is_empty())
+}
+pub fn builtin_topic() -> Option<&'static str> {
+    option_env!("FOX_NUDGE_DEFAULT_TOPIC").map(str::trim).filter(|s| !s.is_empty())
+}
+
 /// 构建时注入的默认访问令牌（来自 sops 解密出的 .env），设置里填了就用设置里的
 pub fn builtin_token() -> Option<&'static str> {
     option_env!("FOX_NUDGE_DEFAULT_TOKEN").filter(|t| !t.trim().is_empty())
@@ -91,12 +101,14 @@ fn config(app: &AppHandle) -> Option<Config> {
     let state = app.state::<AppState>();
     let data = state.data.lock().unwrap();
     let s = &data.settings;
-    if s.server.is_empty() || s.topic.is_empty() {
-        return None;
-    }
+    let pick = |custom: &str, builtin: Option<&str>| {
+        Some(custom).filter(|c| !c.is_empty()).or(builtin).map(String::from)
+    };
+    let server = pick(&s.server, builtin_server())?;
+    let topic = pick(&s.topic, builtin_topic())?;
     Some(Config {
-        server: s.server.clone(),
-        topic: s.topic.clone(),
+        server,
+        topic,
         token,
         mode: s.mode.clone(),
         poll_seconds: s.poll_seconds,
@@ -487,6 +499,11 @@ pub async fn publish(app: &AppHandle, title: String, body: String) -> Result<Mes
         return Err(format!("消息最长 {} 个字", crate::data::BODY_LIMIT));
     }
     let cfg = config(app).ok_or("请先在设置里填写服务器和主题")?;
+    // 客户端节流：连发几条后冷却逐级加长，界面只提示不显示时间
+    if let Err(wait) = app.state::<AppState>().hub.throttle.lock().unwrap().check(Instant::now()) {
+        log::warn("message", "throttled", json!({ "wait_ms": wait.as_millis() as u64 }));
+        return Err("发得太快了，稍后再试".into());
+    }
     let (identity, encrypt, avatar) = {
         let state = app.state::<AppState>();
         let data = state.data.lock().unwrap();

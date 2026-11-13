@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { Copy, Dices, Play } from 'lucide-react'
+import { Copy, Dices } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Switch } from './ui/switch'
@@ -12,9 +12,12 @@ import { ConfirmAction } from './confirm-action'
 import { HelpTip } from './help-tip'
 import { ThemeToggle } from './theme-toggle'
 import { Tip } from './tip'
-import { initial, sounds } from '../lib/initial'
+import { sounds } from '../lib/initial'
 import { ANONYMOUS, cleanName, hasName, NAME_LIMIT } from '../lib/avatar-text'
 import { api, desktop, type Settings as SettingsData, type Snapshot } from '../lib/runtime'
+
+// 覆盖型设置的占位：用内置值时只显示「已内置」，不暴露具体内容
+const sourceText = (source: string) => (source === 'builtin' ? '已内置' : '未设置')
 
 const pressed = 'px-3 data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground'
 
@@ -148,6 +151,13 @@ type PanelProps = {
 function General({ snapshot, disabled, set, run }: PanelProps) {
   const settings = snapshot.settings
   const named = hasName(snapshot.identity.name)
+  // 悬停在提示音选项上就试听，快速划过时只播最后停住的那个
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const preview = (sound: string) => {
+    clearTimeout(timer.current)
+    if (sound !== 'none') timer.current = setTimeout(() => void api.testSound(sound).catch(() => {}), 150)
+  }
+  useEffect(() => () => clearTimeout(timer.current), [])
   return (
     <>
       <Section title='身份'>
@@ -188,24 +198,16 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
       </Section>
       <Section title='提醒'>
         <Row label='系统通知'>
-          <Button variant='ghost' size='sm' disabled={disabled} onClick={() => void run(api.testNotification)}>
+          <Button variant='ghost' size='sm' disabled={disabled} onClick={() => void api.testNotification().catch(() => {})}>
             测试
           </Button>
           <Switch checked={settings.notify} disabled={disabled} onCheckedChange={(notify) => set({ notify })} />
         </Row>
         <Row label='提示音'>
-          <Tip content='试听'>
-            <Button variant='ghost' size='icon' aria-label='试听' disabled={disabled || settings.sound === 'none'} onClick={() => void run(() => api.testSound(settings.sound))}>
-              <Play />
-            </Button>
-          </Tip>
-          <Choice label='提示音' value={settings.sound} options={sounds} onChange={(sound) => set({ sound })} disabled={disabled} />
+          <Choice label='提示音' value={settings.sound} options={sounds} onChange={(sound) => set({ sound })} onHover={preview} disabled={disabled} />
         </Row>
       </Section>
       <Section title='桌面'>
-        <Row label='快捷键' help='在任何地方打开发送页，清空即不注册'>
-          <TextSetting value={settings.shortcut} placeholder='未设置' disabled={disabled} onSave={(shortcut) => set({ shortcut })} />
-        </Row>
         <Row label='外观'>
           <ThemeToggle value={settings.theme} disabled={disabled} onChange={(theme) => set({ theme })} />
         </Row>
@@ -236,10 +238,10 @@ function Advanced({ snapshot, disabled, set, run }: PanelProps) {
     <>
       <Section title='服务器'>
         <Row label='地址'>
-          <TextSetting value={settings.server} fallback={initial.settings.server} disabled={disabled} onSave={(server) => set({ server })} />
+          <TextSetting value={settings.server} placeholder={sourceText(snapshot.serverSource)} disabled={disabled} onSave={(server) => set({ server })} />
         </Row>
         <Row label='主题' help='同一主题的设备都会收到'>
-          <TextSetting value={settings.topic} fallback={initial.settings.topic} maxLength={64} disabled={disabled} onSave={(topic) => set({ topic })} />
+          <TextSetting value={settings.topic} placeholder={sourceText(snapshot.topicSource)} maxLength={64} disabled={disabled} onSave={(topic) => set({ topic })} />
         </Row>
         <Row label='访问令牌'>
           <SecretSetting kind='token' source={snapshot.tokenSource} empty='tk_…' disabled={disabled} run={run} />

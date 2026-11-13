@@ -92,7 +92,8 @@ export function App() {
   async function run(work: () => Promise<unknown>) {
     if (running.current) return false
     running.current = true
-    setWorking(true)
+    // 超过 300ms 才把控件置为忙碌，短操作不会让整页闪一下
+    const busy = setTimeout(() => setWorking(true), 300)
     try {
       await work()
       await refresh()
@@ -101,6 +102,7 @@ export function App() {
       toast.error(String(e), { id: 'action-error' })
       return false
     } finally {
+      clearTimeout(busy)
       running.current = false
       setWorking(false)
     }

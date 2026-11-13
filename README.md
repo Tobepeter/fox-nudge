@@ -14,5 +14,5 @@ pnpm install:app   # 打包并覆盖安装到 /Applications
 `curl` 也能直接发，桌面端显示为未知发送者：
 
 ```bash
-curl -H "Authorization: Bearer $TOKEN" -d '任务完成' https://notify.tobeei.com/notify-main
+curl -H "Authorization: Bearer $NTFY_TOKEN" -d '任务完成' "$NTFY_URL/$NTFY_TOPIC"
 ```

@@ -7,6 +7,6 @@ import type { Template } from "./Template";
 
 export type Snapshot = { settings: Settings, identity: Identity, templates: Array<Template>, messages: Array<Message>, connection: Connection, 
 /**
- * custom：设置里填的；builtin：构建时内置；none：没有
+ * 以下来源：custom 设置里填的；builtin 构建时内置；none 没有
  */
-tokenSource: string, keySource: string, version: string, dev: boolean, };
+serverSource: string, topicSource: string, tokenSource: string, keySource: string, version: string, dev: boolean, };

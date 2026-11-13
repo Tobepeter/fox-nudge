@@ -16,6 +16,14 @@ export type Effect =
 
 const PRESETS = ['beam', 'marble', 'bauhaus', 'ring', 'pixel', 'sunset']
 const randomStyle = () => PRESETS[Math.floor(Math.random() * PRESETS.length)]
+// 模拟构建时内置的地址和主题，界面只显示「已内置」
+const BUILTIN = { server: 'https://ntfy.example', topic: 'demo' }
+
+// 与 Rust throttle.rs 一致：连发 3 条后冷却 2、4、8、16 秒，最长 30 秒，每安静 20 秒降一档
+export function cooldown(level: number) {
+  return level <= 3 ? 0 : Math.min(2000 * 2 ** Math.min(level - 4, 8), 30000)
+}
+
 const SOUNDS = ['Glass', 'Ping', 'Pop', 'Purr', 'Submarine', 'Hero', 'Funk', 'none']
 const BODY_LIMIT = 500
 
@@ -56,6 +64,8 @@ export class WebRuntime {
       identity: { id: randomId(12), name: ANONYMOUS },
       templates: defaultTemplates(),
       messages: [],
+      serverSource: 'builtin',
+      topicSource: 'builtin',
       tokenSource: 'builtin',
       // 模拟内置了默认密钥，开箱即可加密发送
       keySource: 'builtin',
@@ -99,7 +109,18 @@ export class WebRuntime {
   }
 
   #configured() {
-    return !!this.state.settings.server && !!this.state.settings.topic
+    return (!!this.state.settings.server || !!BUILTIN.server) && (!!this.state.settings.topic || !!BUILTIN.topic)
+  }
+
+  #throttle = { level: 0, last: 0, next: 0 }
+  #checkThrottle(now = Date.now()) {
+    const t = this.#throttle
+    if (now < t.next) return false
+    if (t.last) t.level = Math.max(0, t.level - Math.floor((now - t.last) / 20000))
+    t.level += 1
+    t.last = now
+    t.next = now + cooldown(t.level)
+    return true
   }
 
   #connect() {
@@ -142,8 +163,10 @@ export class WebRuntime {
         return structuredClone(this.state)
       case 'save_settings': {
         const settings = structuredClone(args.settings as Settings)
-        settings.server = settings.server.trim().replace(/\/+$/, '') || this.#initial.settings.server
-        settings.topic = settings.topic.trim() || this.#initial.settings.topic
+        settings.server = settings.server.trim().replace(/\/+$/, '')
+        settings.topic = settings.topic.trim()
+        if (settings.server === BUILTIN.server) settings.server = ''
+        if (settings.topic === BUILTIN.topic) settings.topic = ''
         settings.pollSeconds = Math.min(3600, Math.max(15, settings.pollSeconds))
         this.#validate(settings)
         if (settings.avatarStyle === 'name' && this.state.identity.name === ANONYMOUS) settings.avatarStyle = randomStyle()
@@ -154,6 +177,8 @@ export class WebRuntime {
           settings.mode !== previous.mode ||
           settings.pollSeconds !== previous.pollSeconds
         this.state.settings = settings
+        this.state.serverSource = settings.server ? 'custom' : 'builtin'
+        this.state.topicSource = settings.topic ? 'custom' : 'builtin'
         if (reconnect) this.#connect()
         this.#changed()
         return
@@ -204,6 +229,7 @@ export class WebRuntime {
         if (!this.#configured()) throw new Error('请先在设置里填写服务器和主题')
         if (this.state.settings.encrypt && this.state.keySource === 'none')
           throw new Error('加密已开启，但还没有共享密钥，请在设置里填写')
+        if (!this.#checkThrottle()) throw new Error('发得太快了，稍后再试')
         if (this.state.connection.state === 'waiting') throw new Error('连不上服务器')
         const message: Message = {
           id: `web-${randomId(10)}`,

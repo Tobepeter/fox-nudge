@@ -21,7 +21,6 @@ pub struct Settings {
     /// 系统提示音名，none 为静音
     pub sound: String,
     pub notify: bool,
-    pub shortcut: String,
     /// window：主窗口打开时显示；always；never
     pub dock_mode: String,
     pub theme: String,
@@ -32,14 +31,14 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            server: "https://notify.tobeei.com".into(),
-            topic: "notify-main".into(),
+            // 留空表示用构建时内置的地址和主题，填了就覆盖
+            server: String::new(),
+            topic: String::new(),
             encrypt: true,
             mode: "stream".into(),
             poll_seconds: 60,
             sound: "Glass".into(),
             notify: true,
-            shortcut: "Control+Alt+N".into(),
             dock_mode: "window".into(),
             theme: "system".into(),
             avatar_style: random_style(),
@@ -76,15 +75,14 @@ pub const SOUNDS: [&str; 8] = [
 ];
 impl Settings {
     pub fn normalize(&mut self) {
-        // 地址和主题留空就回到默认值，界面上以灰色占位显示
-        let defaults = Settings::default();
+        // 和内置值相同的视为没有覆盖，存成空
         self.server = self.server.trim().trim_end_matches('/').to_string();
-        if self.server.is_empty() {
-            self.server = defaults.server;
+        if Some(self.server.as_str()) == crate::ntfy::builtin_server() {
+            self.server.clear();
         }
         self.topic = self.topic.trim().to_string();
-        if self.topic.is_empty() {
-            self.topic = defaults.topic;
+        if Some(self.topic.as_str()) == crate::ntfy::builtin_topic() {
+            self.topic.clear();
         }
         self.poll_seconds = self.poll_seconds.clamp(15, 3600);
     }
@@ -242,6 +240,8 @@ pub fn read() -> Data {
     match fs::read_to_string(&path) {
         Ok(text) => match serde_json::from_str::<Data>(&text) {
             Ok(mut data) => {
+                // 旧版本把默认地址和主题写进了数据，和内置值相同的转成“用内置”
+                data.settings.normalize();
                 if data.identity.id.is_empty() {
                     data.identity = Identity::fresh();
                 }
@@ -370,13 +370,12 @@ mod tests {
         assert!(s.validate().is_err());
     }
     #[test]
-    fn empty_server_and_topic_fall_back_to_defaults() {
-        let mut s = Settings { server: "  ".into(), topic: "".into(), ..Settings::default() };
+    fn server_and_topic_are_overrides() {
+        let s = Settings::default();
+        assert_eq!((s.server.as_str(), s.topic.as_str()), ("", ""), "默认不写死，走内置配置");
+        let mut s = Settings { server: " https://x.example/ ".into(), topic: " t1 ".into(), ..Settings::default() };
         s.normalize();
-        assert_eq!((s.server.as_str(), s.topic.as_str()), ("https://notify.tobeei.com", "notify-main"));
-        s.server = "https://x.example/".into();
-        s.normalize();
-        assert_eq!(s.server, "https://x.example");
+        assert_eq!((s.server.as_str(), s.topic.as_str()), ("https://x.example", "t1"));
     }
     #[test]
     fn old_messages_without_avatar_still_load() {

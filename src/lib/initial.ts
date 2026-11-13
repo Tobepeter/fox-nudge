@@ -3,14 +3,13 @@ import type { Snapshot } from './bindings/Snapshot'
 // 首屏占位，拿到真实快照前使用；字段与 Rust 默认值一致
 export const initial: Snapshot = {
   settings: {
-    server: 'https://notify.tobeei.com',
-    topic: 'notify-main',
+    server: '',
+    topic: '',
     encrypt: true,
     mode: 'stream',
     pollSeconds: 60,
     sound: 'Glass',
     notify: true,
-    shortcut: 'Control+Alt+N',
     dockMode: 'window',
     theme: 'system',
     avatarStyle: 'beam',
@@ -28,6 +27,8 @@ export const initial: Snapshot = {
     retryAt: null,
     error: '',
   },
+  serverSource: 'none',
+  topicSource: 'none',
   tokenSource: 'none',
   keySource: 'none',
   version: '',
