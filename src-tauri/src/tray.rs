@@ -10,21 +10,15 @@ use tauri::{
 
 const ID: &str = "main";
 
-// 占位图标：已连接是实心圆点，未连接是空心圆环，作为模板图标跟随菜单栏深浅色
+// 菜单栏图标（候选 A，Codex 手写 SVG 导出的 36px 模板图）：已连接实心铃铛，未连接空心铃铛；
+// 系统按 18pt 高度显示，并随菜单栏深浅色自动反色。源文件在 icons/tray/*.svg
 fn icon(connected: bool) -> Image<'static> {
-    let size = 22usize;
-    let mut pixels = vec![0u8; size * size * 4];
-    let c = 10.5f32;
-    for y in 0..size {
-        for x in 0..size {
-            let d = ((x as f32 - c).powi(2) + (y as f32 - c).powi(2)).sqrt();
-            let on = if connected { d <= 6.0 } else { (4.2..=6.2).contains(&d) };
-            if on {
-                pixels[(y * size + x) * 4 + 3] = 255;
-            }
-        }
-    }
-    Image::new_owned(pixels, size as u32, size as u32)
+    let bytes: &[u8] = if connected {
+        include_bytes!("../icons/tray/connected.png")
+    } else {
+        include_bytes!("../icons/tray/disconnected.png")
+    };
+    Image::from_bytes(bytes).expect("菜单栏图标").to_owned()
 }
 
 fn status_text(app: &AppHandle) -> (bool, String) {
