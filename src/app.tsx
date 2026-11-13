@@ -118,7 +118,6 @@ export function App() {
     try {
       await api.send('', body)
       await refresh()
-      toast.success('已发送', { id: 'sent', duration: 1500 })
       return true
     } catch (e) {
       toast.error(String(e), { id: 'send-error' })
@@ -183,7 +182,7 @@ export function App() {
         {desktop && <div data-tauri-drag-region className='h-11 shrink-0 select-none' />}
         <main
           className={`min-h-0 flex-1 p-4 ${desktop ? 'pt-0' : ''} ${
-            page === 'settings' || page === 'debug' ? 'app-scroll overflow-auto [scrollbar-gutter:stable]' : 'flex flex-col overflow-hidden'
+            page === 'settings' ? 'app-scroll overflow-auto [scrollbar-gutter:stable]' : 'flex flex-col overflow-hidden'
           }`}
         >
           {page === 'send' && (

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { GripVertical, Pencil, Plus, SendHorizontal, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { Check, GripVertical, Loader2, Pencil, Plus, SendHorizontal, Trash2 } from 'lucide-react'
 import {
   closestCenter,
   DndContext,
@@ -24,11 +24,24 @@ import type { Snapshot, Template } from '../lib/runtime'
 const LIMIT = 10
 const TEXT_LIMIT = 100
 const UNDO_MS = 5000
+const SENT_MS = 1200
 // 只允许上下拖
 const vertical: Modifier = ({ transform }) => ({ ...transform, x: 0 })
+// 行内按钮和输入框共用的尺寸与字重，切换编辑时文字位置、大小完全一致
+const FIELD = 'h-9 min-w-0 flex-1 px-3 font-normal'
 
-// 编辑态的文案输入框：和按钮同高，失焦或回车保存，Esc 还原
-function TextField(props: { value: string; onSave: (value: string) => void; autoFocus?: boolean; placeholder?: string; onCancel?: () => void }) {
+/** 发送反馈：正在发的那条转圈，发完短暂打勾；不禁用其他行，避免整列闪动 */
+type Feedback = { id: string; state: 'sending' | 'sent' } | null
+
+// 编辑态输入框：失焦或回车提交，Esc 放弃
+function TextField(props: {
+  value: string
+  onSubmit: (value: string) => void
+  onCancel?: () => void
+  autoFocus?: boolean
+  placeholder?: string
+  keepOpen?: boolean
+}) {
   const [value, setValue] = useState(props.value)
   useEffect(() => setValue(props.value), [props.value])
   return (
@@ -37,15 +50,23 @@ function TextField(props: { value: string; onSave: (value: string) => void; auto
       value={value}
       maxLength={TEXT_LIMIT}
       placeholder={props.placeholder}
-      className='h-9 min-w-0 flex-1'
+      className={FIELD}
       onChange={(e) => setValue(e.target.value)}
       onBlur={() => {
         const next = value.trim()
-        if (next && next !== props.value) props.onSave(next)
-        else if (!next) props.onCancel?.()
+        if (next && next !== props.value) props.onSubmit(next)
+        else props.onCancel?.()
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur()
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+          e.preventDefault()
+          const next = value.trim()
+          if (props.keepOpen) {
+            // 连续添加：回车提交后清空，继续输下一条
+            if (next) props.onSubmit(next)
+            setValue('')
+          } else (e.target as HTMLInputElement).blur()
+        }
         if (e.key === 'Escape') {
           setValue(props.value)
           props.onCancel?.()
@@ -55,51 +76,67 @@ function TextField(props: { value: string; onSave: (value: string) => void; auto
   )
 }
 
-// 一行：左侧把手、中间按钮或输入框、右侧固定一格（编辑时是垃圾桶），两种状态位置和高度一致
+// 一行三段：左侧把手、中间按钮或输入框、右侧固定一格（发送状态或垃圾桶）
+function Line(props: { handle?: ReactNode; children: ReactNode; side?: ReactNode; dragging?: boolean }) {
+  return (
+    <div className={`flex items-center gap-1 ${props.dragging ? 'relative z-10' : ''}`}>
+      <span className='flex size-8 shrink-0 items-center justify-center'>{props.handle}</span>
+      {props.children}
+      <span className='flex size-9 shrink-0 items-center justify-center'>{props.side}</span>
+    </div>
+  )
+}
+
 function Row(props: {
   item: Template
   editing: boolean
-  disabled: boolean
-  send: (text: string) => void
+  feedback: Feedback
+  send: () => void
   update: (text: string) => void
   remove: () => void
 }) {
   const sortable = useSortable({ id: props.item.id })
+  const status = props.feedback?.id === props.item.id ? props.feedback.state : null
   return (
     <li
       ref={sortable.setNodeRef}
       style={{ transform: CSS.Translate.toString(sortable.transform), transition: sortable.transition }}
-      className={`group flex items-center gap-1 ${sortable.isDragging ? 'relative z-10' : ''}`}
+      className='group'
     >
-      <button
-        aria-label='拖动排序'
-        className='flex size-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground/50 group-hover:text-muted-foreground hover:bg-muted active:cursor-grabbing'
-        {...sortable.attributes}
-        {...sortable.listeners}
+      <Line
+        dragging={sortable.isDragging}
+        handle={
+          <button
+            aria-label='拖动排序'
+            className='flex size-8 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground/40 group-hover:text-muted-foreground hover:bg-muted active:cursor-grabbing'
+            {...sortable.attributes}
+            {...sortable.listeners}
+          >
+            <GripVertical className='size-4' />
+          </button>
+        }
+        side={
+          props.editing ? (
+            <Tip content='删除'>
+              <Button variant='ghost' size='icon' aria-label='删除' onClick={props.remove}>
+                <Trash2 />
+              </Button>
+            </Tip>
+          ) : status === 'sending' ? (
+            <Loader2 className='size-4 animate-spin text-muted-foreground' aria-label='发送中' />
+          ) : status === 'sent' ? (
+            <Check className='size-4 text-success' aria-label='已发送' />
+          ) : null
+        }
       >
-        <GripVertical className='size-4' />
-      </button>
-      {props.editing ? (
-        <TextField value={props.item.text} onSave={props.update} />
-      ) : (
-        <Button
-          variant='outline'
-          className={`h-9 min-w-0 flex-1 justify-start ${sortable.isDragging ? 'shadow-md' : ''}`}
-          disabled={props.disabled}
-          onClick={() => props.send(props.item.text)}
-        >
-          <span className='truncate'>{props.item.text}</span>
-        </Button>
-      )}
-      <span className='flex size-9 shrink-0 items-center justify-center'>
-        {props.editing && (
-          <Tip content='删除'>
-            <Button variant='ghost' size='icon' aria-label='删除' onClick={props.remove}>
-              <Trash2 />
-            </Button>
-          </Tip>
+        {props.editing ? (
+          <TextField value={props.item.text} onSubmit={props.update} />
+        ) : (
+          <Button variant='outline' className={`${FIELD} justify-start ${sortable.isDragging ? 'shadow-md' : ''}`} onClick={props.send}>
+            <span className='truncate'>{props.item.text}</span>
+          </Button>
         )}
-      </span>
+      </Line>
     </li>
   )
 }
@@ -119,22 +156,54 @@ export function Compose(props: {
   disabled: boolean
 }) {
   const { snapshot, editing } = props
-  const busy = props.disabled || props.sending
-  // 排序和编辑立即生效，保存失败时跟随快照还原
+  // 排序、编辑、添加立即生效；保存排队进行，期间不被快照覆盖，失败时还原成快照
   const [items, setItems] = useState(snapshot.templates)
-  useEffect(() => setItems(snapshot.templates), [snapshot.templates])
   const latest = useRef(items)
   latest.current = items
+  const saved = useRef(snapshot.templates)
+  saved.current = snapshot.templates
+  const saving = useRef(false)
+  const queued = useRef<Template[] | null>(null)
+  useEffect(() => {
+    if (!saving.current) setItems(snapshot.templates)
+  }, [snapshot.templates])
   const [adding, setAdding] = useState(false)
   const [undo, setUndo] = useState<PendingUndo | null>(null)
   const clearUndo = useCallback(() => setUndo(null), [])
-  useEffect(() => {
-    if (!editing) setAdding(false)
-  }, [editing])
+  const [feedback, setFeedback] = useState<Feedback>(null)
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(feedbackTimer.current), [])
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
+
   function save(next: Template[]) {
+    latest.current = next
     setItems(next)
-    void props.saveTemplates(next).then((ok) => !ok && setItems(snapshot.templates))
+    if (saving.current) {
+      queued.current = next
+      return
+    }
+    saving.current = true
+    void (async () => {
+      let target: Template[] | null = next
+      let ok = true
+      while (target) {
+        ok = await props.saveTemplates(target)
+        target = queued.current
+        queued.current = null
+      }
+      saving.current = false
+      if (!ok) setItems(saved.current)
+    })()
+  }
+  // 发送中只在这一行右侧转圈，发完打勾；正在发的时候再点直接忽略
+  async function send(id: string, text: string) {
+    if (feedback?.state === 'sending') return false
+    clearTimeout(feedbackTimer.current)
+    setFeedback({ id, state: 'sending' })
+    const ok = await props.send(text)
+    setFeedback(ok ? { id, state: 'sent' } : null)
+    if (ok) feedbackTimer.current = setTimeout(() => setFeedback(null), SENT_MS)
+    return ok
   }
   // 删除立即生效，5 秒内可撤销，插回原位置；再删一条会顶掉上一次的撤销
   function remove(item: Template) {
@@ -153,36 +222,45 @@ export function Compose(props: {
       },
     })
   }
+  function add(text: string) {
+    const current = latest.current
+    if (current.length >= LIMIT) return
+    const next = [...current, { id: crypto.randomUUID(), text }]
+    save(next)
+    if (next.length >= LIMIT) setAdding(false)
+  }
   function onDragEnd({ active, over }: DragEndEvent) {
     if (!over || active.id === over.id) return
     save(arrayMove(items, items.findIndex((t) => t.id === active.id), items.findIndex((t) => t.id === over.id)))
   }
   async function submit() {
-    if (await props.send(props.draft)) props.setDraft('')
+    if (await send('draft', props.draft)) props.setDraft('')
   }
+  const draftStatus = feedback?.id === 'draft' ? feedback.state : null
   return (
     <section className='flex min-h-0 flex-1 flex-col gap-4'>
       <UndoNotice pending={undo} onExpire={clearUndo} />
-      <div className='flex h-8 shrink-0 items-center justify-between gap-3'>
+      <div className='flex shrink-0 items-center justify-between gap-3'>
         <div className='flex min-w-0 items-center gap-3'>
           <h2 className='font-medium'>发送</h2>
           <ConnectionStatus connection={snapshot.connection} onReconnect={props.reconnect} />
         </div>
-        {editing ? (
-          <Button size='sm' onClick={() => props.setEditing(false)}>
-            完成
+        {/* 编辑和完成用同尺寸图标切换，标题栏不变宽 */}
+        <Tip content={editing ? '完成' : '编辑文案'}>
+          <Button
+            variant={editing ? 'secondary' : 'ghost'}
+            size='icon-sm'
+            aria-label={editing ? '完成' : '编辑文案'}
+            aria-pressed={editing}
+            disabled={props.disabled || (!editing && items.length === 0)}
+            onClick={() => props.setEditing(!editing)}
+          >
+            {editing ? <Check /> : <Pencil />}
           </Button>
-        ) : (
-          <Tip content='编辑文案'>
-            <Button variant='ghost' size='icon-sm' aria-label='编辑文案' disabled={props.disabled} onClick={() => props.setEditing(true)}>
-              <Pencil />
-            </Button>
-          </Tip>
-        )}
+        </Tip>
       </div>
       <div className='app-scroll -mx-4 min-h-0 flex-1 overflow-y-auto px-4'>
-        <div className='max-w-md'>
-          {items.length === 0 && !editing && <p className='text-muted-foreground'>暂无文案</p>}
+        <div className='max-w-md space-y-1.5 pb-1'>
           <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[vertical]} onDragEnd={onDragEnd}>
             <SortableContext items={items.map((t) => t.id)} strategy={verticalListSortingStrategy}>
               <ul className='space-y-1.5'>
@@ -191,8 +269,8 @@ export function Compose(props: {
                     key={item.id}
                     item={item}
                     editing={editing}
-                    disabled={busy}
-                    send={(text) => void props.send(text)}
+                    feedback={feedback}
+                    send={() => void send(item.id, item.text)}
                     update={(text) => save(items.map((t) => (t.id === item.id ? { ...t, text } : t)))}
                     remove={() => remove(item)}
                   />
@@ -200,44 +278,39 @@ export function Compose(props: {
               </ul>
             </SortableContext>
           </DndContext>
-          {editing && (
-            <div className='space-y-1.5 pt-1.5'>
-              {adding && (
-                <div className='flex items-center gap-1 pr-10 pl-9'>
-                  <TextField
-                    value=''
-                    autoFocus
-                    placeholder='新文案'
-                    onCancel={() => setAdding(false)}
-                    onSave={(text) => {
-                      setAdding(false)
-                      save([...items, { id: '', text }])
-                    }}
-                  />
-                </div>
+          {/* 添加常驻在最后一行，点一下原地变输入框，回车后可以接着输下一条 */}
+          {items.length < LIMIT && (
+            <Line>
+              {adding ? (
+                <TextField value='' autoFocus keepOpen placeholder='输入文案，回车添加' onSubmit={add} onCancel={() => setAdding(false)} />
+              ) : (
+                <Button
+                  variant='ghost'
+                  className={`${FIELD} justify-start border border-dashed text-muted-foreground`}
+                  disabled={props.disabled}
+                  onClick={() => setAdding(true)}
+                >
+                  <Plus />
+                  添加文案
+                </Button>
               )}
-              <div className='flex items-center justify-between pr-10 pl-9'>
-                {items.length < LIMIT && !adding ? (
-                  <Button variant='ghost' size='sm' onClick={() => setAdding(true)}>
-                    <Plus />
-                    添加
+            </Line>
+          )}
+          {editing && (
+            <Line>
+              <span className='flex-1' />
+              <ConfirmAction
+                label='恢复默认'
+                description='恢复默认文案？当前文案会被替换'
+                success='已恢复默认文案'
+                trigger={
+                  <Button variant='ghost' size='sm' className='text-muted-foreground'>
+                    恢复默认
                   </Button>
-                ) : (
-                  <span />
-                )}
-                <ConfirmAction
-                  label='恢复默认'
-                  description='恢复默认文案？当前文案会被替换'
-                  success='已恢复默认文案'
-                  trigger={
-                    <Button variant='ghost' size='sm' className='text-muted-foreground'>
-                      恢复默认
-                    </Button>
-                  }
-                  onConfirm={props.resetTemplates}
-                />
-              </div>
-            </div>
+                }
+                onConfirm={props.resetTemplates}
+              />
+            </Line>
           )}
         </div>
       </div>
@@ -252,8 +325,8 @@ export function Compose(props: {
           onChange={(e) => props.setDraft(e.target.value)}
           onSubmit={() => void submit()}
         />
-        <Button size='icon' className='size-9 shrink-0' aria-label='发送' disabled={busy || !props.draft.trim()} onClick={() => void submit()}>
-          <SendHorizontal />
+        <Button size='icon' className='size-9 shrink-0' aria-label='发送' disabled={props.disabled || (!props.draft.trim() && !draftStatus)} onClick={() => void submit()}>
+          {draftStatus === 'sending' ? <Loader2 className='animate-spin' /> : draftStatus === 'sent' ? <Check /> : <SendHorizontal />}
         </Button>
       </div>
     </section>
