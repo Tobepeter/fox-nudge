@@ -29,12 +29,12 @@ function Generated(props: { seed: string; preset: Preset; size: number }) {
 
 /**
  * 头像：avatar 为 name 且设了昵称时显示昵称文字，否则按设备 ID 画预设风格；
- * 发送者没带风格或是旧版本的风格名时按 ID 算一套；没有 ID（curl 发的）显示灰色圆
+ * 发送者没带风格或是旧版本的风格名时按 ID 算一套；没有 ID（curl 发的）用固定的机器人头像
  */
 export function Avatar(props: { id?: string | null; name?: string | null; avatar?: string | null; size: number }) {
   const { id, size } = props
-  if (!id)
-    return <span className='inline-block shrink-0 rounded-full bg-muted' style={{ width: size, height: size }} aria-hidden='true' />
+  // 没有身份的消息（curl、Agent、解不开的、旧模拟）统一用一个固定的机器人头像
+  if (!id) return <Generated seed='fox-nudge-unknown' preset='botttsNeutral' size={size} />
   if (props.avatar === 'name' && hasName(props.name)) {
     const { text, em } = avatarText(props.name!)
     return (
