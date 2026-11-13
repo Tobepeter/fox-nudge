@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { Copy, Dices } from 'lucide-react'
+import { Copy, Dices, ExternalLink, Eye } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Switch } from './ui/switch'
@@ -17,6 +17,7 @@ import { ANONYMOUS, cleanName, hasName, NAME_LIMIT } from '../lib/avatar-text'
 import {
   api,
   desktop,
+  type NotificationStatus,
   type Settings as SettingsData,
   type Snapshot,
 } from '../lib/runtime'
@@ -177,12 +178,21 @@ function SecretSetting(props: {
 
 type PanelProps = {
   snapshot: Snapshot
+  permission: NotificationStatus
+  setPermission: (status: NotificationStatus) => void
   disabled: boolean
   set: (patch: Partial<SettingsData>) => void
   run: (work: () => Promise<unknown>) => Promise<boolean>
 }
 
-function General({ snapshot, disabled, set, run }: PanelProps) {
+function General({
+  snapshot,
+  disabled,
+  set,
+  run,
+  permission,
+  setPermission,
+}: PanelProps) {
   const settings = snapshot.settings
   const named = hasName(snapshot.identity.name)
   // 悬停在提示音选项上就试听，快速划过时只播最后停住的那个
@@ -223,15 +233,46 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
         </Row>
       </Section>
       <Section title='提醒'>
-        <Row label='系统通知'>
+        <Row
+          label='系统通知'
+          help={
+            permission === 'unsupported' ? '开发版不检查系统权限' : undefined
+          }
+        >
+          {/* 系统里还没允许或已关闭时，给出对应入口 */}
+          {settings.notify && permission === 'notDetermined' && (
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() =>
+                void api
+                  .requestNotifications()
+                  .then(setPermission)
+                  .catch(() => {})
+              }
+            >
+              允许
+            </Button>
+          )}
+          {settings.notify && permission === 'denied' && (
+            <Tip content='系统里已关闭，去系统设置打开'>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='text-destructive'
+                onClick={() =>
+                  void api.openNotificationSettings().catch(() => {})
+                }
+              >
+                已关闭
+                <ExternalLink />
+              </Button>
+            </Tip>
+          )}
           <Switch
             checked={settings.notify}
             disabled={disabled}
-            onCheckedChange={(notify) => {
-              set({ notify })
-              // 打开时顺手弹一条示例，确认系统通知能出来
-              if (notify) void api.testNotification().catch(() => {})
-            }}
+            onCheckedChange={(notify) => set({ notify })}
           />
         </Row>
         <Row
@@ -255,6 +296,17 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
               详细
             </ToggleGroupItem>
           </ToggleGroup>
+          <Tip content='预览'>
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              aria-label='预览通知'
+              disabled={disabled || !settings.notify}
+              onClick={() => void api.previewNotification().catch(() => {})}
+            >
+              <Eye />
+            </Button>
+          </Tip>
         </Row>
         <Row label='提示音'>
           <Choice
@@ -433,6 +485,8 @@ function Advanced({ snapshot, disabled, set, run }: PanelProps) {
 
 export function Settings(props: {
   snapshot: Snapshot
+  permission: NotificationStatus
+  setPermission: (status: NotificationStatus) => void
   disabled: boolean
   save: (settings: SettingsData) => Promise<boolean>
   run: (work: () => Promise<unknown>) => Promise<boolean>
@@ -440,6 +494,8 @@ export function Settings(props: {
   const [tab, setTab] = useState('general')
   const panel: PanelProps = {
     snapshot: props.snapshot,
+    permission: props.permission,
+    setPermission: props.setPermission,
     disabled: props.disabled,
     run: props.run,
     set: (patch) => void props.save({ ...props.snapshot.settings, ...patch }),

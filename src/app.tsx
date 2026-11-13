@@ -1,23 +1,48 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Bug, History as HistoryIcon, Send, Settings as SettingsIcon } from 'lucide-react'
+import {
+  Bug,
+  History as HistoryIcon,
+  Send,
+  Settings as SettingsIcon,
+} from 'lucide-react'
 import { Toaster } from './components/ui/sonner'
 import { Button } from './components/ui/button'
 import { Compose } from './components/compose'
 import { History } from './components/history'
 import { renderAvatarPng } from './components/avatar'
+import { NotifyGuide } from './components/notify-guide'
 import { Settings } from './components/settings'
 import { initial } from './lib/initial'
-import { api, available, desktop, events, webPreview, type Settings as SettingsData } from './lib/runtime'
+import {
+  api,
+  available,
+  desktop,
+  events,
+  webPreview,
+  type NotificationStatus,
+  type Settings as SettingsData,
+} from './lib/runtime'
 
 const DebugPage = import.meta.env.DEV
-  ? lazy(() => import('./debug/debug-page').then((m) => ({ default: m.DebugPage })))
+  ? lazy(() =>
+      import('./debug/debug-page').then((m) => ({ default: m.DebugPage })),
+    )
   : null
 
 const pages = [
   { id: 'send', title: '发送', icon: Send },
   { id: 'history', title: '历史', icon: HistoryIcon },
-  ...(DebugPage ? [{ id: 'debug', title: '调试', icon: Bug, className: 'text-amber-600 dark:text-amber-400' }] : []),
+  ...(DebugPage
+    ? [
+        {
+          id: 'debug',
+          title: '调试',
+          icon: Bug,
+          className: 'text-amber-600 dark:text-amber-400',
+        },
+      ]
+    : []),
 ]
 
 export function App() {
@@ -28,6 +53,10 @@ export function App() {
   const [editing, setEditing] = useState(false)
   const [working, setWorking] = useState(false)
   const [sending, setSending] = useState(false)
+  const [permission, setPermission] =
+    useState<NotificationStatus>('unsupported')
+  const [guide, setGuide] = useState(false)
+  const guided = useRef(false)
   const running = useRef(false)
   const input = useRef<HTMLTextAreaElement>(null)
 
@@ -39,7 +68,9 @@ export function App() {
     let disposed = false
     const stops: Promise<() => void>[] = [
       events.snapshot((s) => !disposed && setSnapshot(s)),
-      events.connection((connection) => !disposed && setSnapshot((s) => ({ ...s, connection }))),
+      events.connection(
+        (connection) => !disposed && setSnapshot((s) => ({ ...s, connection })),
+      ),
       events.navigate((p) => !disposed && setPage(p)),
       events.compose(() => {
         setEditing(false)
@@ -47,18 +78,36 @@ export function App() {
       }),
       events.error((text) => toast.error(text, { id: 'backend-error' })),
       // 通知右侧的发送者头像由前端画好交给 Rust，窗口隐藏时也能响应
-      events.avatarRequest((request) =>
-        void renderAvatarPng(request)
-          .then((png) => api.avatarReady(request.key, png))
-          .catch((e) => api.logClient('warn', 'avatar-render-failed', { error: String(e) }).catch(() => {})),
+      events.avatarRequest(
+        (request) =>
+          void renderAvatarPng(request)
+            .then((png) => api.avatarReady(request.key, png))
+            .catch((e) =>
+              api
+                .logClient('warn', 'avatar-render-failed', { error: String(e) })
+                .catch(() => {}),
+            ),
       ),
     ]
     api
       .snapshot()
-      .then((s) => {
+      .then(async (s) => {
         if (disposed) return
         setSnapshot(s)
         setLoaded(true)
+        const status = await api
+          .notificationStatus()
+          .catch(() => 'unsupported' as const)
+        setPermission(status)
+        // 应用里开着通知、系统还没允许时引导一次
+        if (
+          s.settings.notify &&
+          (status === 'notDetermined' || status === 'denied') &&
+          !guided.current
+        ) {
+          guided.current = true
+          setGuide(true)
+        }
       })
       .catch((e) => toast.error(String(e), { id: 'connection-error' }))
     const key = (e: KeyboardEvent) => {
@@ -69,9 +118,29 @@ export function App() {
     }
     // 前端异常经 Rust 统一脱敏写入调试日志
     const onError = (e: ErrorEvent) =>
-      void api.logClient('error', 'window-error', { error: e.message, file: e.filename, line: e.lineno }).catch(() => {})
+      void api
+        .logClient('error', 'window-error', {
+          error: e.message,
+          file: e.filename,
+          line: e.lineno,
+        })
+        .catch(() => {})
     const onRejection = (e: PromiseRejectionEvent) =>
-      void api.logClient('error', 'unhandled-rejection', { error: String(e.reason) }).catch(() => {})
+      void api
+        .logClient('error', 'unhandled-rejection', { error: String(e.reason) })
+        .catch(() => {})
+    // 从系统设置改完权限回来时刷新状态
+    const refreshPermission = () =>
+      void api
+        .notificationStatus()
+        .then(setPermission)
+        .catch(() => {})
+    window.addEventListener('focus', refreshPermission)
+    stops.push(
+      Promise.resolve(() =>
+        window.removeEventListener('focus', refreshPermission),
+      ),
+    )
     window.addEventListener('keydown', key)
     window.addEventListener('error', onError)
     window.addEventListener('unhandledrejection', onRejection)
@@ -89,7 +158,8 @@ export function App() {
     const update = () =>
       document.documentElement.classList.toggle(
         'dark',
-        snapshot.settings.theme === 'dark' || (snapshot.settings.theme === 'system' && media.matches),
+        snapshot.settings.theme === 'dark' ||
+          (snapshot.settings.theme === 'system' && media.matches),
       )
     update()
     media.addEventListener('change', update)
@@ -138,7 +208,17 @@ export function App() {
   useEffect(() => {
     if (!import.meta.env.DEV) return
     void import('./debug/app-debug').then(({ appDebug }) =>
-      appDebug.sync({ snapshot, loaded, page, draft, editing, setPage, setDraft, setEditing, send }),
+      appDebug.sync({
+        snapshot,
+        loaded,
+        page,
+        draft,
+        editing,
+        setPage,
+        setDraft,
+        setEditing,
+        send,
+      }),
     )
   })
 
@@ -146,13 +226,26 @@ export function App() {
     <div className='flex h-screen overflow-hidden'>
       <Toaster
         position='top-right'
-        theme={snapshot.settings.theme === 'dark' ? 'dark' : snapshot.settings.theme === 'light' ? 'light' : 'system'}
+        theme={
+          snapshot.settings.theme === 'dark'
+            ? 'dark'
+            : snapshot.settings.theme === 'light'
+              ? 'light'
+              : 'system'
+        }
         offset={{ top: desktop ? 52 : 16, right: 16 }}
       />
       <aside className='flex w-44 shrink-0 flex-col border-r bg-sidebar px-3 pb-3'>
         {/* 红绿灯所在的一行：留空可拖动，内容从下一行开始 */}
-        {desktop && <div data-tauri-drag-region className='-mx-3 mb-3 h-11 shrink-0 select-none' />}
-        <div className={`mb-4 flex items-center gap-2 px-2 font-semibold ${desktop ? '' : 'pt-3'}`}>
+        {desktop && (
+          <div
+            data-tauri-drag-region
+            className='-mx-3 mb-3 h-11 shrink-0 select-none'
+          />
+        )}
+        <div
+          className={`mb-4 flex items-center gap-2 px-2 font-semibold ${desktop ? '' : 'pt-3'}`}
+        >
           <img src='/app-icon.png' alt='' className='size-6 rounded-md' />
           FoxNudge
         </div>
@@ -186,10 +279,14 @@ export function App() {
         </div>
       </aside>
       <div className='flex min-w-0 flex-1 flex-col'>
-        {desktop && <div data-tauri-drag-region className='h-11 shrink-0 select-none' />}
+        {desktop && (
+          <div data-tauri-drag-region className='h-11 shrink-0 select-none' />
+        )}
         <main
           className={`min-h-0 flex-1 p-4 ${desktop ? 'pt-0' : ''} ${
-            page === 'settings' ? 'app-scroll overflow-auto [scrollbar-gutter:stable]' : 'flex flex-col overflow-hidden'
+            page === 'settings'
+              ? 'app-scroll overflow-auto [scrollbar-gutter:stable]'
+              : 'flex flex-col overflow-hidden'
           }`}
         >
           {page === 'send' && (
@@ -199,7 +296,9 @@ export function App() {
               setDraft={setDraft}
               sending={sending}
               send={send}
-              saveTemplates={(templates) => run(() => api.saveTemplates(templates))}
+              saveTemplates={(templates) =>
+                run(() => api.saveTemplates(templates))
+              }
               resetTemplates={() => run(api.resetTemplates)}
               setRecentCleared={(at) => run(() => api.setRecentCleared(at))}
               editing={editing}
@@ -214,10 +313,19 @@ export function App() {
               messages={snapshot.messages}
               identity={snapshot.identity}
               avatarStyle={snapshot.settings.avatarStyle}
-              clear={() => run(api.clearHistory)} disabled={!available || working} />
+              clear={() => run(api.clearHistory)}
+              disabled={!available || working}
+            />
           )}
           {page === 'settings' && (
-            <Settings snapshot={snapshot} disabled={!available || working} save={save} run={run} />
+            <Settings
+              snapshot={snapshot}
+              permission={permission}
+              setPermission={setPermission}
+              disabled={!available || working}
+              save={save}
+              run={run}
+            />
           )}
           {page === 'debug' && DebugPage && (
             <Suspense fallback={null}>
@@ -226,6 +334,15 @@ export function App() {
           )}
         </main>
       </div>
+      {guide && (
+        <NotifyGuide
+          status={permission}
+          onDone={(status) => {
+            setPermission(status)
+            setGuide(false)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -14,6 +14,9 @@ export const desktop = isTauri()
 export const webPreview = import.meta.env.DEV && !desktop
 export const available = desktop || webPreview
 
+/** unsupported：开发版没有应用包，查不了 */
+export type NotificationStatus = 'unsupported' | 'notDetermined' | 'denied' | 'authorized'
+
 export type AvatarRequest = { key: string; id: string | null; name: string | null; avatar: string | null }
 
 export type InjectMessage = {
@@ -67,6 +70,10 @@ export const api = {
   openLogs: () => call('open_logs'),
   testSound: (sound: string) => call('test_sound', { sound }),
   testNotification: () => call('test_notification'),
+  previewNotification: () => call('preview_notification'),
+  notificationStatus: () => call<NotificationStatus>('notification_status'),
+  requestNotifications: () => call<NotificationStatus>('request_notifications'),
+  openNotificationSettings: () => call('open_notification_settings'),
   avatarReady: (key: string, png: string) => call('avatar_ready', { key, png }),
   logClient: (level: 'warn' | 'error', event: string, detail: unknown) =>
     call('log_client', { level, event, detail }),

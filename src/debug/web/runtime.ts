@@ -43,6 +43,7 @@ export type WebRuntimeOptions = { connectMs?: number; retryMs?: number }
 export class WebRuntime {
   state: Snapshot
   effects: Effect[] = []
+  permission: 'notDetermined' | 'denied' | 'authorized' = 'notDetermined'
   #listeners = new Map<string, Set<Listener>>()
   #timers = new Set<ReturnType<typeof setTimeout>>()
   #initial: Snapshot
@@ -282,6 +283,18 @@ export class WebRuntime {
         return
       case 'test_sound':
         this.effects.push({ kind: 'sound', sound: String(args.sound) })
+        return
+      // 模拟新版通知权限：首次未决定，请求后允许，方便在浏览器里看引导
+      case 'notification_status':
+        return this.permission
+      case 'request_notifications':
+        this.permission = 'authorized'
+        return this.permission
+      case 'open_notification_settings':
+        this.effects.push({ kind: 'open-logs' })
+        return
+      case 'preview_notification':
+        this.effects.push({ kind: 'notification', title: this.state.identity.name, body: '这是一条预览消息' })
         return
       case 'test_notification':
         this.effects.push({ kind: 'notification', title: 'FoxNudge', body: '这是一条测试通知' })

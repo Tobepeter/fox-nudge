@@ -418,6 +418,10 @@ fn main() {
         test_notification,
         log_client,
         alert::avatar_ready,
+        alert::notification_status,
+        alert::request_notifications,
+        alert::open_notification_settings,
+        alert::preview_notification,
         debug::debug_reply,
         debug::debug_inject,
         debug::debug_disconnect,
@@ -443,6 +447,10 @@ fn main() {
         test_notification,
         log_client,
         alert::avatar_ready,
+        alert::notification_status,
+        alert::request_notifications,
+        alert::open_notification_settings,
+        alert::preview_notification,
     ]);
     let app = builder
         .setup(move |app| {

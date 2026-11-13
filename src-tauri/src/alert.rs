@@ -125,7 +125,7 @@ pub fn notify(app: &AppHandle, title: &str, body: &str) {
 /// 弹一条系统通知。
 /// tauri dev 没有 .app 包，通知插件会借用「终端」的身份，终端没有通知授权时系统直接丢弃，
 /// 所以 tauri dev 改用系统自带的 osascript 弹（显示为「脚本编辑器」，不支持图片）；
-/// 安装版和 debug 版 .app 直接用插件底层的 notify-rust，才能带上右侧的头像图片
+/// 安装版和 debug 版 .app 直接用插件底层的 notify-rust（新版 UNUserNotificationCenter），才能带上右侧的头像图片
 fn notify_with(app: &AppHandle, title: &str, body: &str, image: Option<PathBuf>) {
     if tauri::is_dev() {
         // 标题和正文作为参数传入，不拼进脚本，免去转义
@@ -142,10 +142,7 @@ fn notify_with(app: &AppHandle, title: &str, body: &str, image: Option<PathBuf>)
     }
     #[cfg(target_os = "macos")]
     {
-        static APPLICATION: OnceLock<()> = OnceLock::new();
-        APPLICATION.get_or_init(|| {
-            let _ = notify_rust::set_application(&app.config().identifier);
-        });
+        let _ = app;
         let mut notification = notify_rust::Notification::new();
         notification.summary(title).body(body);
         if let Some(path) = image.as_ref().and_then(|p| p.to_str()) {
@@ -207,6 +204,78 @@ pub fn avatar_ready(app: AppHandle, key: String, png: String) -> Result<(), Stri
         let _ = send.send(());
     }
     Ok(())
+}
+
+// —— 通知权限：新版接口能查状态、触发系统的「是否允许」弹窗；tauri dev 没有应用包，用不了 ——
+
+/// unsupported（tauri dev）/ notDetermined / denied / authorized
+#[tauri::command]
+pub async fn notification_status() -> String {
+    if tauri::is_dev() {
+        return "unsupported".into();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use mac_usernotifications::AuthorizationStatus as S;
+        return match mac_usernotifications::get_notification_settings().await {
+            Ok(settings) => match settings.authorization_status {
+                S::NotDetermined => "notDetermined",
+                S::Denied => "denied",
+                _ => "authorized",
+            }
+            .into(),
+            Err(e) => {
+                log::warn("alert", "permission-status-failed", json!({ "error": e.to_string() }));
+                "unsupported".into()
+            }
+        };
+    }
+    #[allow(unreachable_code)]
+    "authorized".into()
+}
+
+/// 触发系统的「是否允许」弹窗；系统只问一次，之后只能去系统设置里改
+#[tauri::command]
+pub async fn request_notifications() -> String {
+    #[cfg(target_os = "macos")]
+    if !tauri::is_dev() {
+        match mac_usernotifications::request_auth().await {
+            Ok(granted) => log::info("alert", "permission-requested", json!({ "granted": granted })),
+            Err(e) => log::warn("alert", "permission-request-failed", json!({ "error": e.to_string() })),
+        }
+    }
+    notification_status().await
+}
+
+/// 打开系统设置里 FoxNudge 的通知设置
+#[tauri::command]
+pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
+    let url = format!("x-apple.systempreferences:com.apple.Notifications-Settings.extension?id={}", app.config().identifier);
+    std::process::Command::new("/usr/bin/open").arg(url).status().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 按当前通知样式发一条预览，用自己的昵称和头像，连提示音一起
+#[tauri::command]
+pub fn preview_notification(app: AppHandle) {
+    let (identity, avatar) = {
+        let state = app.state::<AppState>();
+        let data = state.data.lock().unwrap();
+        (data.identity.clone(), data.settings.avatar_style.clone())
+    };
+    let sample = Message {
+        id: "preview".into(),
+        time: chrono::Utc::now().timestamp(),
+        title: String::new(),
+        body: "这是一条预览消息".into(),
+        sender_id: Some(identity.id),
+        sender_name: Some(identity.name),
+        sender_avatar: Some(avatar),
+        mine: false,
+        encrypted: true,
+        status: "ok".into(),
+    };
+    message(&app, &sample);
 }
 
 /// 用系统自带的提示音，afplay 在后台线程里跑完并回收
