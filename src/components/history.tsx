@@ -2,16 +2,14 @@ import { Trash2 } from 'lucide-react'
 import { ConfirmAction } from './confirm-action'
 import { HelpTip } from './help-tip'
 import { Avatar } from './avatar'
+import { groupHistory } from '../lib/history-groups'
 import type { Identity, Message } from '../lib/runtime'
 
-function when(seconds: number) {
-  const date = new Date(seconds * 1000)
-  const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-  const diff = Math.round((day(new Date()) - day(date)) / 86400000)
-  if (diff === 0) return time
-  if (diff === 1) return `昨天 ${time}`
-  return `${date.getMonth() + 1}-${date.getDate()} ${time}`
+function time(seconds: number) {
+  return new Date(seconds * 1000).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export function History(props: {
@@ -21,16 +19,18 @@ export function History(props: {
   clear: () => Promise<boolean>
   disabled: boolean
 }) {
-  // 最新的在上面
-  const messages = [...props.messages].reverse()
+  // 按天分组，组内最新的在上
+  const groups = groupHistory(props.messages)
   return (
     <section className='flex min-h-0 flex-1 flex-col gap-3'>
       <div className='flex shrink-0 items-center justify-between'>
         <div className='flex items-center gap-0.5'>
           <h2 className='font-medium'>历史</h2>
-          <HelpTip label='历史保留规则'>只保留最近 300 条，更早的自动清掉；只存在这台电脑上</HelpTip>
+          <HelpTip label='历史保留规则'>
+            只保留最近 300 条，更早的自动清掉；只存在这台电脑上
+          </HelpTip>
         </div>
-        {messages.length > 0 && (
+        {props.messages.length > 0 && (
           <ConfirmAction
             label='清空历史'
             description='只清空这台电脑上的记录'
@@ -42,29 +42,52 @@ export function History(props: {
         )}
       </div>
       <div className='app-scroll -mx-4 min-h-0 flex-1 overflow-y-auto px-4 [scrollbar-gutter:stable]'>
-        {messages.length === 0 ? (
+        {groups.length === 0 ? (
           <p className='text-muted-foreground'>暂无</p>
         ) : (
-          <ul className='divide-y'>
-            {messages.map((m) => {
-              const text = m.status === 'undecryptable' ? '无法解密' : [m.title, m.body].filter(Boolean).join(' · ')
-              return (
-                <li key={m.id} data-message-id={m.id} className='flex items-baseline gap-3 py-1.5' title={text}>
-                  <span className='w-24 shrink-0 whitespace-nowrap text-muted-foreground tabular-nums'>{when(m.time)}</span>
-                  <span className='flex w-28 shrink-0 items-center gap-2 self-center text-muted-foreground'>
-                    <Avatar
-                      id={m.mine ? props.identity.id : m.senderId}
-                      name={m.mine ? props.identity.name : m.senderName}
-                      avatar={m.mine ? props.avatarStyle : m.senderAvatar}
-                      size={24}
-                    />
-                    <span className='truncate'>{m.mine ? '我' : m.senderName || '—'}</span>
-                  </span>
-                  <span className={`min-w-0 flex-1 truncate ${m.status === 'undecryptable' ? 'text-muted-foreground' : ''}`}>{text}</span>
-                </li>
-              )
-            })}
-          </ul>
+          <div className='space-y-3'>
+            {groups.map((group) => (
+              <section key={group.key}>
+                <h3 className='py-1 text-muted-foreground'>{group.title}</h3>
+                <ul className='divide-y'>
+                  {group.messages.map((m) => {
+                    const text =
+                      m.status === 'undecryptable'
+                        ? '无法解密'
+                        : [m.title, m.body].filter(Boolean).join(' · ')
+                    return (
+                      <li
+                        key={m.id}
+                        data-message-id={m.id}
+                        className='flex items-baseline gap-3 py-1.5'
+                        title={text}
+                      >
+                        <span className='w-12 shrink-0 text-muted-foreground tabular-nums'>
+                          {time(m.time)}
+                        </span>
+                        <span className='flex w-28 shrink-0 items-center gap-2 self-center text-muted-foreground'>
+                          <Avatar
+                            id={m.mine ? props.identity.id : m.senderId}
+                            name={m.mine ? props.identity.name : m.senderName}
+                            avatar={m.mine ? props.avatarStyle : m.senderAvatar}
+                            size={24}
+                          />
+                          <span className='truncate'>
+                            {m.mine ? '我' : m.senderName || '—'}
+                          </span>
+                        </span>
+                        <span
+                          className={`min-w-0 flex-1 truncate ${m.status === 'undecryptable' ? 'text-muted-foreground' : ''}`}
+                        >
+                          {text}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
+            ))}
+          </div>
         )}
       </div>
     </section>

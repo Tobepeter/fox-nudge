@@ -39,10 +39,10 @@ const DAY = 24 * HOUR
 function samples(snapshot: Snapshot): InjectMessage[] {
   const me = { senderId: snapshot.identity.id, senderName: snapshot.identity.name, avatar: snapshot.settings.avatarStyle }
   const xm = { senderId: 'debug-xiaoming', senderName: '小明', avatar: 'name' }
-  const fox = { senderId: 'debug-ahu', senderName: '阿狐', avatar: 'ring' }
-  const lucy = { senderId: 'debug-lucy', senderName: 'Lucy', avatar: 'bauhaus' }
-  const tobe = { senderId: 'debug-tobe', senderName: 'tobe', avatar: 'marble' }
-  const anon = { senderId: 'debug-anon', senderName: 'anonymous', avatar: 'pixel' }
+  const fox = { senderId: 'debug-ahu', senderName: '阿狐', avatar: 'openPeeps' }
+  const lucy = { senderId: 'debug-lucy', senderName: 'Lucy', avatar: 'notionists' }
+  const tobe = { senderId: 'debug-tobe', senderName: 'tobe', avatar: 'lorelei' }
+  const anon = { senderId: 'debug-anon', senderName: 'anonymous', avatar: 'thumbs' }
   return [
     { ...xm, body: '在吗，来一下', ago: 2 * DAY + 3 * HOUR },
     { ...fox, body: '吃饭啦', ago: 2 * DAY },

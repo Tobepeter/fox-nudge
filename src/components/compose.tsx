@@ -1,5 +1,20 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { Check, GripVertical, Loader2, Pencil, Plus, SendHorizontal, Trash2 } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
+import {
+  Check,
+  GripVertical,
+  Loader2,
+  Pencil,
+  Plus,
+  SendHorizontal,
+  Trash2,
+} from 'lucide-react'
 import {
   closestCenter,
   DndContext,
@@ -10,7 +25,13 @@ import {
   type DragEndEvent,
   type Modifier,
 } from '@dnd-kit/core'
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -77,12 +98,23 @@ function TextField(props: {
 }
 
 // 一行三段：左侧把手、中间按钮或输入框、右侧固定一格（发送状态或垃圾桶）
-function Line(props: { handle?: ReactNode; children: ReactNode; side?: ReactNode; dragging?: boolean }) {
+function Line(props: {
+  handle?: ReactNode
+  children: ReactNode
+  side?: ReactNode
+  dragging?: boolean
+}) {
   return (
-    <div className={`flex items-center gap-1 ${props.dragging ? 'relative z-10' : ''}`}>
-      <span className='flex size-8 shrink-0 items-center justify-center'>{props.handle}</span>
+    <div
+      className={`flex items-center gap-1 ${props.dragging ? 'relative z-10' : ''}`}
+    >
+      <span className='flex size-8 shrink-0 items-center justify-center'>
+        {props.handle}
+      </span>
       {props.children}
-      <span className='flex size-9 shrink-0 items-center justify-center'>{props.side}</span>
+      <span className='flex size-9 shrink-0 items-center justify-center'>
+        {props.side}
+      </span>
     </div>
   )
 }
@@ -96,11 +128,15 @@ function Row(props: {
   remove: () => void
 }) {
   const sortable = useSortable({ id: props.item.id })
-  const status = props.feedback?.id === props.item.id ? props.feedback.state : null
+  const status =
+    props.feedback?.id === props.item.id ? props.feedback.state : null
   return (
     <li
       ref={sortable.setNodeRef}
-      style={{ transform: CSS.Translate.toString(sortable.transform), transition: sortable.transition }}
+      style={{
+        transform: CSS.Translate.toString(sortable.transform),
+        transition: sortable.transition,
+      }}
       className='group'
     >
       <Line
@@ -118,12 +154,21 @@ function Row(props: {
         side={
           props.editing ? (
             <Tip content='删除'>
-              <Button variant='ghost' size='icon' aria-label='删除' onClick={props.remove}>
+              <Button
+                variant='ghost'
+                size='icon'
+                aria-label='删除'
+                className='text-muted-foreground hover:text-destructive'
+                onClick={props.remove}
+              >
                 <Trash2 />
               </Button>
             </Tip>
           ) : status === 'sending' ? (
-            <Loader2 className='size-4 animate-spin text-muted-foreground' aria-label='发送中' />
+            <Loader2
+              className='size-4 animate-spin text-muted-foreground'
+              aria-label='发送中'
+            />
           ) : status === 'sent' ? (
             <Check className='size-4 text-success' aria-label='已发送' />
           ) : null
@@ -132,7 +177,11 @@ function Row(props: {
         {props.editing ? (
           <TextField value={props.item.text} onSubmit={props.update} />
         ) : (
-          <Button variant='outline' className={`${FIELD} justify-start ${sortable.isDragging ? 'shadow-md' : ''}`} onClick={props.send}>
+          <Button
+            variant='outline'
+            className={`${FIELD} justify-start ${sortable.isDragging ? 'shadow-md' : ''}`}
+            onClick={props.send}
+          >
             <span className='truncate'>{props.item.text}</span>
           </Button>
         )}
@@ -173,7 +222,12 @@ export function Compose(props: {
   const [feedback, setFeedback] = useState<Feedback>(null)
   const feedbackTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(feedbackTimer.current), [])
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
 
   function save(next: Template[]) {
     latest.current = next
@@ -215,7 +269,8 @@ export function Compose(props: {
       expiresAt: Date.now() + UNDO_MS,
       undo: () => {
         const current = latest.current
-        if (current.some((t) => t.id === item.id) || current.length >= LIMIT) return
+        if (current.some((t) => t.id === item.id) || current.length >= LIMIT)
+          return
         const next = [...current]
         next.splice(Math.min(index, next.length), 0, item)
         save(next)
@@ -231,7 +286,13 @@ export function Compose(props: {
   }
   function onDragEnd({ active, over }: DragEndEvent) {
     if (!over || active.id === over.id) return
-    save(arrayMove(items, items.findIndex((t) => t.id === active.id), items.findIndex((t) => t.id === over.id)))
+    save(
+      arrayMove(
+        items,
+        items.findIndex((t) => t.id === active.id),
+        items.findIndex((t) => t.id === over.id),
+      ),
+    )
   }
   async function submit() {
     if (await send('draft', props.draft)) props.setDraft('')
@@ -243,26 +304,56 @@ export function Compose(props: {
       <div className='flex shrink-0 items-center justify-between gap-3'>
         <div className='flex min-w-0 items-center gap-3'>
           <h2 className='font-medium'>发送</h2>
-          <ConnectionStatus connection={snapshot.connection} onReconnect={props.reconnect} />
+          <ConnectionStatus
+            connection={snapshot.connection}
+            onReconnect={props.reconnect}
+          />
         </div>
-        {/* 编辑和完成用同尺寸图标切换，标题栏不变宽 */}
-        <Tip content={editing ? '完成' : '编辑文案'}>
-          <Button
-            variant={editing ? 'secondary' : 'ghost'}
-            size='icon-sm'
-            aria-label={editing ? '完成' : '编辑文案'}
-            aria-pressed={editing}
-            disabled={props.disabled || (!editing && items.length === 0)}
-            onClick={() => props.setEditing(!editing)}
-          >
-            {editing ? <Check /> : <Pencil />}
-          </Button>
-        </Tip>
+        {/* 编辑和完成用同尺寸图标切换；恢复默认只在编辑时出现在左边 */}
+        <div className='flex items-center gap-1'>
+          {editing && (
+            <ConfirmAction
+              label='恢复默认'
+              description='恢复默认文案？当前文案会被替换'
+              success='已恢复默认文案'
+              trigger={
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-muted-foreground'
+                >
+                  恢复默认
+                </Button>
+              }
+              onConfirm={props.resetTemplates}
+            />
+          )}
+          <Tip content={editing ? '完成' : '编辑文案'}>
+            <Button
+              variant={editing ? 'secondary' : 'ghost'}
+              size='icon-sm'
+              aria-label={editing ? '完成' : '编辑文案'}
+              aria-pressed={editing}
+              disabled={props.disabled || (!editing && items.length === 0)}
+              onClick={() => props.setEditing(!editing)}
+            >
+              {editing ? <Check /> : <Pencil />}
+            </Button>
+          </Tip>
+        </div>
       </div>
       <div className='app-scroll -mx-4 min-h-0 flex-1 overflow-y-auto px-4'>
         <div className='max-w-md space-y-1.5 pb-1'>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[vertical]} onDragEnd={onDragEnd}>
-            <SortableContext items={items.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[vertical]}
+            onDragEnd={onDragEnd}
+          >
+            <SortableContext
+              items={items.map((t) => t.id)}
+              strategy={verticalListSortingStrategy}
+            >
               <ul className='space-y-1.5'>
                 {items.map((item) => (
                   <Row
@@ -271,7 +362,13 @@ export function Compose(props: {
                     editing={editing}
                     feedback={feedback}
                     send={() => void send(item.id, item.text)}
-                    update={(text) => save(items.map((t) => (t.id === item.id ? { ...t, text } : t)))}
+                    update={(text) =>
+                      save(
+                        items.map((t) =>
+                          t.id === item.id ? { ...t, text } : t,
+                        ),
+                      )
+                    }
                     remove={() => remove(item)}
                   />
                 ))}
@@ -282,11 +379,18 @@ export function Compose(props: {
           {items.length < LIMIT && (
             <Line>
               {adding ? (
-                <TextField value='' autoFocus keepOpen placeholder='输入文案，回车添加' onSubmit={add} onCancel={() => setAdding(false)} />
+                <TextField
+                  value=''
+                  autoFocus
+                  keepOpen
+                  placeholder='输入文案，回车添加'
+                  onSubmit={add}
+                  onCancel={() => setAdding(false)}
+                />
               ) : (
                 <Button
-                  variant='ghost'
-                  className={`${FIELD} justify-start border border-dashed text-muted-foreground`}
+                  variant='outline'
+                  className={`${FIELD} justify-start border-dashed bg-transparent text-muted-foreground shadow-none`}
                   disabled={props.disabled}
                   onClick={() => setAdding(true)}
                 >
@@ -294,22 +398,6 @@ export function Compose(props: {
                   添加文案
                 </Button>
               )}
-            </Line>
-          )}
-          {editing && (
-            <Line>
-              <span className='flex-1' />
-              <ConfirmAction
-                label='恢复默认'
-                description='恢复默认文案？当前文案会被替换'
-                success='已恢复默认文案'
-                trigger={
-                  <Button variant='ghost' size='sm' className='text-muted-foreground'>
-                    恢复默认
-                  </Button>
-                }
-                onConfirm={props.resetTemplates}
-              />
             </Line>
           )}
         </div>
@@ -325,8 +413,20 @@ export function Compose(props: {
           onChange={(e) => props.setDraft(e.target.value)}
           onSubmit={() => void submit()}
         />
-        <Button size='icon' className='size-9 shrink-0' aria-label='发送' disabled={props.disabled || (!props.draft.trim() && !draftStatus)} onClick={() => void submit()}>
-          {draftStatus === 'sending' ? <Loader2 className='animate-spin' /> : draftStatus === 'sent' ? <Check /> : <SendHorizontal />}
+        <Button
+          size='icon'
+          className='size-9 shrink-0'
+          aria-label='发送'
+          disabled={props.disabled || (!props.draft.trim() && !draftStatus)}
+          onClick={() => void submit()}
+        >
+          {draftStatus === 'sending' ? (
+            <Loader2 className='animate-spin' />
+          ) : draftStatus === 'sent' ? (
+            <Check />
+          ) : (
+            <SendHorizontal />
+          )}
         </Button>
       </div>
     </section>

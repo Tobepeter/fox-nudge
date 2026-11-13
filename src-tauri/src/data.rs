@@ -46,7 +46,8 @@ impl Default for Settings {
         }
     }
 }
-pub const AVATAR_STYLES: [&str; 6] = ["beam", "marble", "bauhaus", "ring", "pixel", "sunset"];
+/// DiceBear 里 CC0 许可的拟人风格，和前端 avatar.tsx 一致
+pub const AVATAR_STYLES: [&str; 6] = ["lorelei", "notionists", "openPeeps", "loreleiNeutral", "notionistsNeutral", "thumbs"];
 pub const ANONYMOUS: &str = "anonymous";
 
 /// 随机选一套预设头像风格
@@ -75,6 +76,10 @@ pub const SOUNDS: [&str; 8] = [
 ];
 impl Settings {
     pub fn normalize(&mut self) {
+        // 旧版本的头像风格名不再支持时，随机换一套新的
+        if self.avatar_style != "name" && !AVATAR_STYLES.contains(&self.avatar_style.as_str()) {
+            self.avatar_style = random_style();
+        }
         // 和内置值相同的视为没有覆盖，存成空
         self.server = self.server.trim().trim_end_matches('/').to_string();
         if Some(self.server.as_str()) == crate::ntfy::builtin_server() {
@@ -368,6 +373,8 @@ mod tests {
         assert!(s.validate().is_ok());
         s.avatar_style = "unknown".into();
         assert!(s.validate().is_err());
+        s.normalize();
+        assert!(AVATAR_STYLES.contains(&s.avatar_style.as_str()), "旧风格名规范化成新预设");
     }
     #[test]
     fn server_and_topic_are_overrides() {

@@ -14,7 +14,7 @@ export type Effect =
   | { kind: 'log'; level: string; event: string }
   | { kind: 'open-logs' }
 
-const PRESETS = ['beam', 'marble', 'bauhaus', 'ring', 'pixel', 'sunset']
+const PRESETS = ['lorelei', 'notionists', 'openPeeps', 'loreleiNeutral', 'notionistsNeutral', 'thumbs']
 const randomStyle = () => PRESETS[Math.floor(Math.random() * PRESETS.length)]
 // 模拟构建时内置的地址和主题，界面只显示「已内置」
 const BUILTIN = { server: 'https://ntfy.example', topic: 'demo' }
@@ -153,7 +153,6 @@ export class WebRuntime {
     if (settings.topic && !/^[A-Za-z0-9_-]+$/.test(settings.topic))
       throw new Error('主题只能包含字母、数字、- 和 _')
     if (!SOUNDS.includes(settings.sound)) throw new Error('未知的提示音')
-    if (settings.avatarStyle !== 'name' && !PRESETS.includes(settings.avatarStyle)) throw new Error('未知的头像风格')
   }
 
   async command(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
@@ -169,6 +168,7 @@ export class WebRuntime {
         if (settings.topic === BUILTIN.topic) settings.topic = ''
         settings.pollSeconds = Math.min(3600, Math.max(15, settings.pollSeconds))
         this.#validate(settings)
+        if (settings.avatarStyle !== 'name' && !PRESETS.includes(settings.avatarStyle)) settings.avatarStyle = randomStyle()
         if (settings.avatarStyle === 'name' && this.state.identity.name === ANONYMOUS) settings.avatarStyle = randomStyle()
         const previous = this.state.settings
         const reconnect =
