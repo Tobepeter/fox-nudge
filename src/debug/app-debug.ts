@@ -7,8 +7,10 @@ export type AppView = {
   loaded: boolean
   page: string
   draft: string
+  editing: boolean
   setPage: (page: string) => void
   setDraft: (value: string) => void
+  setEditing: (value: boolean) => void
   send: (body: string) => Promise<boolean>
 }
 
@@ -48,6 +50,7 @@ export class AppDebug implements DebugSurface {
       runtime: desktop ? 'desktop' : 'web',
       page: v.page,
       draft: v.draft,
+      editing: v.editing,
       identity: s.identity,
       settings: {
         server: s.settings.server,
@@ -78,6 +81,7 @@ export class AppDebug implements DebugSurface {
   actions = {
     navigate: (page: string) => this.#need().setPage(page),
     setDraft: (value: string) => this.#need().setDraft(value),
+    edit: (value = true) => this.#need().setEditing(value),
     // 走界面同一条发送路径，等消息出现在列表里再返回
     send: async (body: string) => {
       const v = this.#need()

@@ -238,6 +238,22 @@ fn save_templates(app: tauri::AppHandle, templates: Vec<Template>) -> Result<(),
     Ok(())
 }
 
+/// 恢复默认文案
+#[tauri::command]
+fn reset_templates(app: tauri::AppHandle) -> Result<(), String> {
+    save(&app, |d| d.templates = data::default_templates())?;
+    log::info("data", "templates-reset", json!({}));
+    tray::refresh(&app);
+    notify(&app);
+    Ok(())
+}
+
+/// 重置设置：恢复默认设置并同步快捷键、登录启动、Dock 和订阅；昵称、文案、历史、令牌和密钥保留
+#[tauri::command]
+fn reset_settings(app: tauri::AppHandle) -> Result<(), String> {
+    save_settings(app, Settings::default())
+}
+
 #[tauri::command]
 fn set_secret(app: tauri::AppHandle, kind: String, value: String) -> Result<(), String> {
     let value = value.trim().to_string();
@@ -374,6 +390,8 @@ fn main() {
         save_settings,
         save_identity,
         save_templates,
+        reset_templates,
+        reset_settings,
         set_secret,
         generate_key,
         send,
@@ -394,6 +412,8 @@ fn main() {
         save_settings,
         save_identity,
         save_templates,
+        reset_templates,
+        reset_settings,
         set_secret,
         generate_key,
         send,

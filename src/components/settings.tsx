@@ -239,7 +239,25 @@ export function Settings(props: {
         <Button variant='outline' disabled={disabled} onClick={() => void props.run(api.reconnect)}>
           重新连接
         </Button>
-        <ConfirmAction label='清除数据' description='清掉本机所有数据、令牌和密钥' disabled={disabled} success='已清除' onConfirm={() => props.run(api.wipeData)} />
+        <ConfirmAction
+          label='重置设置'
+          description='恢复默认设置？昵称、文案、历史、令牌和密钥会保留'
+          success='已恢复默认设置'
+          disabled={disabled}
+          onConfirm={() => props.run(api.resetSettings)}
+        />
+        <ConfirmAction
+          label='清除数据'
+          description='删除设置、文案、历史、令牌、密钥和日志，回到首次安装状态？此操作无法撤销'
+          success='已清除全部数据'
+          disabled={disabled}
+          trigger={
+            <Button variant='outline' className='text-destructive' disabled={disabled}>
+              清除数据
+            </Button>
+          }
+          onConfirm={() => props.run(api.wipeData)}
+        />
       </div>
       <p className='text-xs text-muted-foreground'>
         {snapshot.version}

@@ -180,6 +180,12 @@ export class WebRuntime {
         this.#changed()
         return
       }
+      case 'reset_templates':
+        this.state.templates = defaultTemplates()
+        this.#changed()
+        return
+      case 'reset_settings':
+        return this.command('save_settings', { settings: structuredClone(this.#initial.settings) })
       case 'generate_key':
         return randomId(32)
       case 'send': {

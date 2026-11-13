@@ -24,6 +24,7 @@ export function App() {
   const [loaded, setLoaded] = useState(false)
   const [page, setPage] = useState('send')
   const [draft, setDraft] = useState('')
+  const [editing, setEditing] = useState(false)
   const [working, setWorking] = useState(false)
   const [sending, setSending] = useState(false)
   const running = useRef(false)
@@ -39,7 +40,10 @@ export function App() {
       events.snapshot((s) => !disposed && setSnapshot(s)),
       events.connection((connection) => !disposed && setSnapshot((s) => ({ ...s, connection }))),
       events.navigate((p) => !disposed && setPage(p)),
-      events.compose(() => setTimeout(() => input.current?.focus(), 50)),
+      events.compose(() => {
+        setEditing(false)
+        setTimeout(() => input.current?.focus(), 50)
+      }),
       events.error((text) => toast.error(text, { id: 'backend-error' })),
     ]
     api
@@ -126,7 +130,7 @@ export function App() {
   useEffect(() => {
     if (!import.meta.env.DEV) return
     void import('./debug/app-debug').then(({ appDebug }) =>
-      appDebug.sync({ snapshot, loaded, page, draft, setPage, setDraft, send }),
+      appDebug.sync({ snapshot, loaded, page, draft, editing, setPage, setDraft, setEditing, send }),
     )
   })
 
@@ -188,6 +192,9 @@ export function App() {
               sending={sending}
               send={send}
               saveTemplates={(templates) => run(() => api.saveTemplates(templates))}
+              resetTemplates={() => run(api.resetTemplates)}
+              editing={editing}
+              setEditing={setEditing}
               reconnect={() => void run(api.reconnect)}
               inputRef={input}
               disabled={!available || working}
