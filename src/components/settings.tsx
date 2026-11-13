@@ -6,7 +6,7 @@ import { Input } from './ui/input'
 import { Switch } from './ui/switch'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 import { Choice } from './choice'
-import { Avatar, avatarPresets } from './avatar'
+import { AvatarPicker } from './avatar-picker'
 import { ClearableInput } from './clearable-input'
 import { ConfirmAction } from './confirm-action'
 import { HelpTip } from './help-tip'
@@ -171,29 +171,14 @@ function General({ snapshot, disabled, set, run }: PanelProps) {
           />
         </Row>
         <Row label='头像' help={named ? undefined : '设了昵称后可以用名字当头像'}>
-          <div className='flex gap-1' role='radiogroup' aria-label='头像'>
-            {['name', ...avatarPresets].map((value) => {
-              const off = value === 'name' && !named
-              const checked = settings.avatarStyle === value
-              return (
-                <button
-                  key={value}
-                  role='radio'
-                  aria-checked={checked}
-                  aria-label={value === 'name' ? '名字' : value}
-                  disabled={disabled || off}
-                  onClick={() => set({ avatarStyle: value })}
-                  className={`rounded-full p-0.5 ring-2 transition-shadow disabled:opacity-40 ${checked ? 'ring-primary' : 'ring-transparent enabled:hover:ring-border'}`}
-                >
-                  {value === 'name' && !named ? (
-                    <span className='flex size-[26px] items-center justify-center rounded-full border border-dashed text-muted-foreground'>名</span>
-                  ) : (
-                    <Avatar id={snapshot.identity.id} name={snapshot.identity.name} avatar={value} size={26} />
-                  )}
-                </button>
-              )
-            })}
-          </div>
+          <AvatarPicker
+            id={snapshot.identity.id}
+            name={snapshot.identity.name}
+            value={settings.avatarStyle}
+            named={named}
+            disabled={disabled}
+            onChange={(avatarStyle) => set({ avatarStyle })}
+          />
         </Row>
       </Section>
       <Section title='提醒'>

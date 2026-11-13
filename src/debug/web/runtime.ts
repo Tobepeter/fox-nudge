@@ -6,6 +6,7 @@ import type { Template } from '../../lib/bindings/Template'
 import type { Message } from '../../lib/bindings/Message'
 import type { Connection } from '../../lib/bindings/Connection'
 import { ANONYMOUS, cleanName } from '../../lib/avatar-text.ts'
+import { AVATAR_STYLES, HUMAN_STYLES } from '../../lib/avatar-styles.ts'
 
 type Listener = (value: unknown) => void
 export type Effect =
@@ -14,8 +15,8 @@ export type Effect =
   | { kind: 'log'; level: string; event: string }
   | { kind: 'open-logs' }
 
-const PRESETS = ['lorelei', 'notionists', 'openPeeps', 'loreleiNeutral', 'notionistsNeutral', 'thumbs']
-const randomStyle = () => PRESETS[Math.floor(Math.random() * PRESETS.length)]
+const PRESETS: readonly string[] = AVATAR_STYLES
+const randomStyle = () => HUMAN_STYLES[Math.floor(Math.random() * HUMAN_STYLES.length)]
 // 模拟构建时内置的地址和主题，界面只显示「已内置」
 const BUILTIN = { server: 'https://ntfy.example', topic: 'demo' }
 

@@ -46,13 +46,20 @@ impl Default for Settings {
         }
     }
 }
-/// DiceBear 里 CC0 许可的拟人风格，和前端 avatar.tsx 一致
-pub const AVATAR_STYLES: [&str; 6] = ["lorelei", "notionists", "openPeeps", "loreleiNeutral", "notionistsNeutral", "thumbs"];
+/// DiceBear 头像风格，和前端 src/lib/avatar-styles.ts 一致；前 6 套是 CC0 拟人风格，首次从中随机
+pub const AVATAR_STYLES: [&str; 30] = [
+    "lorelei", "notionists", "openPeeps", "loreleiNeutral", "notionistsNeutral", "thumbs",
+    "adventurer", "adventurerNeutral", "avataaars", "avataaarsNeutral", "bigEars", "bigEarsNeutral",
+    "bigSmile", "micah", "miniavs", "personas", "dylan", "toonHead", "funEmoji", "croodles",
+    "croodlesNeutral", "bottts", "botttsNeutral", "pixelArt", "pixelArtNeutral", "glass", "icons",
+    "identicon", "rings", "shapes",
+];
+const HUMAN_STYLES: usize = 6;
 pub const ANONYMOUS: &str = "anonymous";
 
 /// 随机选一套预设头像风格
 pub fn random_style() -> String {
-    AVATAR_STYLES[rand::random::<usize>() % AVATAR_STYLES.len()].to_string()
+    AVATAR_STYLES[rand::random::<usize>() % HUMAN_STYLES].to_string()
 }
 
 /// 昵称清洗：只留各国文字、数字、空格和 - _ . ·，合并空白，最多 16 个字；
