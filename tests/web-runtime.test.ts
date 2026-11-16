@@ -21,6 +21,7 @@ const initial: Snapshot = {
     launchAtLogin: false,
   },
   identity: { id: '', name: 'anonymous' },
+  defaultName: 'anonymous',
   templates: [],
   messages: [],
   connection: { state: 'connecting', mode: 'stream', connectedAt: null, lastEventAt: null, attempts: 0, retryAt: null, error: '' },
@@ -30,6 +31,7 @@ const initial: Snapshot = {
   keySource: 'none',
   recentClearedAt: 0,
   pausedUntil: 0,
+  welcomed: true,
   version: '0.1.0',
   dev: false,
 }
@@ -41,7 +43,7 @@ test('首次启动生成身份和默认模板，清除数据后换新身份', as
   const rt = new WebRuntime(initial, { connectMs: 5 })
   const first = await snapshot(rt)
   assert.equal(first.identity.id.length, 12)
-  assert.equal(first.identity.name, 'anonymous')
+  assert.equal(first.identity.name, 'web')
   assert.equal(first.templates.length, 6)
   await rt.command('wipe_data')
   assert.notEqual((await snapshot(rt)).identity.id, first.identity.id)
@@ -151,20 +153,21 @@ test('重置设置保留昵称和文案，恢复默认文案', async () => {
   rt.dispose()
 })
 
-test('头像：首次随机预设；清空昵称时名字头像自动回退到预设', async () => {
+test('头像：首次随机预设；默认昵称是系统账户名，名字头像一直能用', async () => {
   const rt = new WebRuntime(initial, { connectMs: 5 })
   let s = await snapshot(rt)
   assert.notEqual(s.settings.avatarStyle, 'name')
   await rt.command('save_settings', { settings: { ...s.settings, avatarStyle: 'name' } })
-  assert.notEqual((await snapshot(rt)).settings.avatarStyle, 'name', '没有昵称时不能选名字头像')
+  assert.equal((await snapshot(rt)).settings.avatarStyle, 'name', '系统账户名也能当名字头像')
   await rt.command('save_identity', { name: '小狐狸' })
   s = await snapshot(rt)
   await rt.command('save_settings', { settings: { ...s.settings, avatarStyle: 'name' } })
   assert.equal((await snapshot(rt)).settings.avatarStyle, 'name')
   await rt.command('save_identity', { name: 'ANONYMOUS' })
   s = await snapshot(rt)
-  assert.equal(s.identity.name, 'anonymous')
-  assert.notEqual(s.settings.avatarStyle, 'name')
+  // 清空或填 anonymous 都回到系统账户名，名字头像照样能用
+  assert.equal(s.identity.name, 'web')
+  assert.equal(s.settings.avatarStyle, 'name')
   const sent = (await rt.command('send', { title: '', body: 'hi' })) as Message
   assert.equal(sent.senderAvatar, s.settings.avatarStyle)
   rt.dispose()

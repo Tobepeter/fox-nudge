@@ -60,6 +60,7 @@ export const api = {
   snapshot: () => call<Snapshot>('get_snapshot'),
   saveSettings: (settings: Settings) => call('save_settings', { settings }),
   saveIdentity: (name: string) => call('save_identity', { name }),
+  finishWelcome: () => call('finish_welcome'),
   saveTemplates: (templates: Template[]) => call('save_templates', { templates }),
   resetTemplates: () => call('reset_templates'),
   resetSettings: () => call('reset_settings'),

@@ -5,7 +5,11 @@ import type { Message } from "./Message";
 import type { Settings } from "./Settings";
 import type { Template } from "./Template";
 
-export type Snapshot = { settings: Settings, identity: Identity, templates: Array<Template>, messages: Array<Message>, connection: Connection, 
+export type Snapshot = { settings: Settings, identity: Identity, 
+/**
+ * 昵称清空时回到的名字：系统账户短名
+ */
+defaultName: string, templates: Array<Template>, messages: Array<Message>, connection: Connection, 
 /**
  * 以下来源：custom 设置里填的；builtin 构建时内置；none 没有
  */
@@ -13,4 +17,8 @@ serverSource: string, topicSource: string, tokenSource: string, keySource: strin
 /**
  * 暂停提醒截止时间（秒），0 表示没暂停
  */
-pausedUntil: number, version: string, dev: boolean, };
+pausedUntil: number, 
+/**
+ * 看过新手引导
+ */
+welcomed: boolean, version: string, dev: boolean, };

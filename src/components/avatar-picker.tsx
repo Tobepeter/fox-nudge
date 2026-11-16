@@ -20,6 +20,8 @@ export function AvatarPicker(props: {
   value: string
   named: boolean
   disabled?: boolean
+  /** 当前头像的显示尺寸，设置页 32，欢迎页更大 */
+  size?: number
   onChange: (value: string) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -34,7 +36,7 @@ export function AvatarPicker(props: {
         onClick={() => setOpen(true)}
         className='rounded-full ring-2 ring-transparent transition-shadow hover:ring-border focus-visible:ring-ring focus-visible:outline-none'
       >
-        <Avatar id={props.id} name={props.name} avatar={props.value} size={32} />
+        <Avatar id={props.id} name={props.name} avatar={props.value} size={props.size ?? 32} />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className='sm:max-w-fit' initialFocus={selected}>

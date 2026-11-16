@@ -18,6 +18,7 @@ export const initial: Snapshot = {
     launchAtLogin: false,
   },
   identity: { id: '', name: 'anonymous' },
+  defaultName: 'anonymous',
   templates: [],
   messages: [],
   connection: {
@@ -35,6 +36,7 @@ export const initial: Snapshot = {
   keySource: 'none',
   recentClearedAt: 0,
   pausedUntil: 0,
+  welcomed: true,
   version: '',
   dev: false,
 }

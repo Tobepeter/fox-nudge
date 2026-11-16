@@ -6,6 +6,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
 import { api, type InjectMessage, type Snapshot } from '../lib/runtime'
+import type { DebugGuide } from '../app'
 
 const tabs = [
   { value: 'mock', label: '模拟' },
@@ -32,7 +33,23 @@ function Group(props: { title: string; children: ReactNode }) {
   )
 }
 
+type GuideStatus = 'real' | 'notDetermined' | 'denied' | 'authorized'
+const guideStatuses: [GuideStatus, string][] = [
+  ['real', '真实权限'],
+  ['notDetermined', '未决定'],
+  ['denied', '已拒绝'],
+  ['authorized', '已允许'],
+]
+
 function MockTab() {
+  // 引导弹窗用的模拟通知权限：dev 查不了真实权限（总是 unsupported），选一个看对应的样子
+  const [status, setStatus] = useState<GuideStatus>('notDetermined')
+  const showGuide = (mode: DebugGuide['mode']) =>
+    window.dispatchEvent(
+      new CustomEvent<DebugGuide>('fox-nudge:guide', {
+        detail: { mode, status: status === 'real' ? undefined : status },
+      }),
+    )
   const [sender, setSender] = useState('小明')
   const [body, setBody] = useState('在吗，来一下')
   // 不同名字用不同 ID，头像才会不同
@@ -89,6 +106,29 @@ function MockTab() {
           </Button>
           <Button variant='outline' onClick={() => void run(api.reconnect)}>
             重新连接
+          </Button>
+        </div>
+      </Group>
+      <Group title='引导'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <ToggleGroup
+            value={[status]}
+            onValueChange={([next]) => next && setStatus(next as GuideStatus)}
+            variant='outline'
+            spacing={0}
+            aria-label='模拟通知权限'
+          >
+            {guideStatuses.map(([value, label]) => (
+              <ToggleGroupItem key={value} value={value} className={pressed}>
+                {label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <Button variant='outline' onClick={() => showGuide('welcome')}>
+            欢迎页
+          </Button>
+          <Button variant='outline' onClick={() => showGuide('notify')}>
+            通知引导
           </Button>
         </div>
       </Group>

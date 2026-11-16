@@ -66,6 +66,19 @@ pub const AVATAR_STYLES: [&str; 30] = [
 const HUMAN_STYLES: usize = 6;
 pub const ANONYMOUS: &str = "anonymous";
 
+/// 默认昵称：系统账户短名（whoami 那个，不是登录界面上的全名），取不到时才用 anonymous
+pub fn default_name() -> String {
+    std::env::var("USER")
+        .ok()
+        .filter(|u| !u.is_empty())
+        .or_else(|| {
+            let home = std::env::var("HOME").ok()?;
+            Some(std::path::Path::new(&home).file_name()?.to_string_lossy().into_owned())
+        })
+        .and_then(|n| clean_name(&n))
+        .unwrap_or_else(|| ANONYMOUS.into())
+}
+
 /// 随机选一套预设头像风格
 pub fn random_style() -> String {
     AVATAR_STYLES[rand::random::<usize>() % HUMAN_STYLES].to_string()
@@ -158,7 +171,7 @@ impl Identity {
     pub fn fresh() -> Self {
         Self {
             id: uuid::Uuid::new_v4().simple().to_string()[..12].to_string(),
-            name: ANONYMOUS.into(),
+            name: default_name(),
         }
     }
 }
@@ -210,6 +223,12 @@ pub struct Data {
     pub recent_cleared_at: i64,
     /// 暂停提醒到这个时间（秒），0 表示没暂停
     pub paused_until: i64,
+    /// 看过新手引导；旧数据没有这个字段，算已经看过，只有新装和清除数据后才弹
+    #[serde(default = "yes")]
+    pub welcomed: bool,
+}
+fn yes() -> bool {
+    true
 }
 impl Default for Data {
     fn default() -> Self {
@@ -221,6 +240,7 @@ impl Default for Data {
             last_id: None,
             recent_cleared_at: 0,
             paused_until: 0,
+            welcomed: false,
         }
     }
 }
@@ -285,6 +305,10 @@ pub fn read() -> Data {
                 data.prune(chrono::Utc::now().timestamp());
                 if data.identity.id.is_empty() {
                     data.identity = Identity::fresh();
+                }
+                // 旧版本没设昵称时存的是 anonymous，换成系统账户名
+                if data.identity.name == ANONYMOUS {
+                    data.identity.name = default_name();
                 }
                 data
             }
@@ -445,10 +469,16 @@ mod tests {
         assert_eq!(t.text, "吃饭啦");
     }
     #[test]
+    fn welcome_only_for_fresh_data() {
+        assert!(!Data::default().welcomed);
+        let old: Data = serde_json::from_str("{}").unwrap();
+        assert!(old.welcomed, "旧数据没有这个字段，算已经看过");
+    }
+    #[test]
     fn identity_is_short_random() {
         let a = Identity::fresh();
         assert_eq!(a.id.len(), 12);
         assert_ne!(a.id, Identity::fresh().id);
-        assert_eq!(a.name, "anonymous");
+        assert_eq!(a.name, default_name());
     }
 }

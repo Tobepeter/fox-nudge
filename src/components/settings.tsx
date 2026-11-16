@@ -13,7 +13,7 @@ import { HelpTip } from './help-tip'
 import { ThemeToggle } from './theme-toggle'
 import { Tip } from './tip'
 import { sounds } from '../lib/initial'
-import { ANONYMOUS, cleanName, hasName, NAME_LIMIT } from '../lib/avatar-text'
+import { cleanName, hasName, NAME_LIMIT } from '../lib/avatar-text'
 import {
   api,
   desktop,
@@ -213,7 +213,7 @@ function General({
         <Row label='昵称'>
           <TextSetting
             value={snapshot.identity.name}
-            fallback={ANONYMOUS}
+            fallback={snapshot.defaultName}
             maxLength={NAME_LIMIT}
             disabled={disabled}
             onSave={(name) => void run(() => api.saveIdentity(cleanName(name)))}

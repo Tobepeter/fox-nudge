@@ -31,6 +31,8 @@ pub struct AppState {
 struct Snapshot {
     settings: Settings,
     identity: Identity,
+    /// 昵称清空时回到的名字：系统账户短名
+    default_name: String,
     templates: Vec<Template>,
     messages: Vec<Message>,
     connection: ntfy::Connection,
@@ -42,6 +44,8 @@ struct Snapshot {
     recent_cleared_at: i64,
     /// 暂停提醒截止时间（秒），0 表示没暂停
     paused_until: i64,
+    /// 看过新手引导
+    welcomed: bool,
     version: String,
     dev: bool,
 }
@@ -67,6 +71,7 @@ fn snapshot(app: &tauri::AppHandle) -> Snapshot {
     Snapshot {
         settings: data.settings,
         identity: data.identity,
+        default_name: data::default_name(),
         templates: data.templates,
         messages: data.messages,
         connection,
@@ -90,6 +95,7 @@ fn snapshot(app: &tauri::AppHandle) -> Snapshot {
         .into(),
         recent_cleared_at: data.recent_cleared_at,
         paused_until: pause::until(app).unwrap_or(0),
+        welcomed: data.welcomed,
         version: env!("CARGO_PKG_VERSION").into(),
         dev: cfg!(debug_assertions),
     }
@@ -226,13 +232,21 @@ fn save_settings(app: tauri::AppHandle, mut settings: Settings) -> Result<(), St
     Ok(())
 }
 
+/// 新手引导点了「好的」或关掉：记下来，之后不再弹；清除数据后重新弹
+#[tauri::command]
+fn finish_welcome(app: tauri::AppHandle) -> Result<(), String> {
+    save(&app, |d| d.welcomed = true)?;
+    notify(&app);
+    Ok(())
+}
+
 #[tauri::command]
 fn save_identity(app: tauri::AppHandle, name: String) -> Result<(), String> {
     let name = data::clean_name(&name);
     save(&app, |d| {
-        d.identity.name = name.clone().unwrap_or_else(|| data::ANONYMOUS.into());
-        // 回到兜底名字时，“名字”头像没法用了，自动换成随机一套预设
-        if name.is_none() && d.settings.avatar_style == "name" {
+        d.identity.name = name.clone().unwrap_or_else(data::default_name);
+        // 连系统账户名都取不到、回到 anonymous 时，“名字”头像没法用了，自动换成随机一套预设
+        if d.identity.name == data::ANONYMOUS && d.settings.avatar_style == "name" {
             d.settings.avatar_style = data::random_style();
         }
     })?;
@@ -429,6 +443,7 @@ fn main() {
         get_snapshot,
         save_settings,
         save_identity,
+        finish_welcome,
         save_templates,
         reset_templates,
         reset_settings,
@@ -463,6 +478,7 @@ fn main() {
         get_snapshot,
         save_settings,
         save_identity,
+        finish_welcome,
         save_templates,
         reset_templates,
         reset_settings,

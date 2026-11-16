@@ -64,7 +64,10 @@ export class WebRuntime {
     return {
       ...base,
       settings: { ...base.settings, avatarStyle: randomStyle() },
-      identity: { id: randomId(12), name: ANONYMOUS },
+      // 模拟的系统账户名
+      identity: { id: randomId(12), name: 'web' },
+      defaultName: 'web',
+      welcomed: false,
       templates: defaultTemplates(),
       messages: [],
       serverSource: 'builtin',
@@ -192,11 +195,15 @@ export class WebRuntime {
         this.#changed()
         return
       }
+      case 'finish_welcome':
+        this.state.welcomed = true
+        this.#changed()
+        return
       case 'save_identity': {
         const name = cleanName(String(args.name ?? ''))
-        this.state.identity = { ...this.state.identity, name: name || ANONYMOUS }
-        // 回到兜底名字时，名字头像不能用，自动换成随机一套预设
-        if (!name && this.state.settings.avatarStyle === 'name') this.state.settings.avatarStyle = randomStyle()
+        this.state.identity = { ...this.state.identity, name: name || this.state.defaultName }
+        // 连系统账户名都没有、回到 anonymous 时，名字头像不能用，自动换成随机一套预设
+        if (this.state.identity.name === ANONYMOUS && this.state.settings.avatarStyle === 'name') this.state.settings.avatarStyle = randomStyle()
         this.#changed()
         return
       }

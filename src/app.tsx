@@ -46,6 +46,12 @@ const pages = [
     : []),
 ]
 
+/** DEBUG：调试页打开引导弹窗的参数 */
+export type DebugGuide = {
+  mode: 'welcome' | 'notify'
+  status?: NotificationStatus
+}
+
 export function App() {
   const [snapshot, setSnapshot] = useState(initial)
   const [loaded, setLoaded] = useState(false)
@@ -56,8 +62,11 @@ export function App() {
   const [sending, setSending] = useState(false)
   const [permission, setPermission] =
     useState<NotificationStatus>('unsupported')
-  const [guide, setGuide] = useState(false)
+  // 引导弹窗：welcome 带昵称和头像（首次启动、清除数据后），notify 只说通知权限
+  const [guide, setGuide] = useState<'welcome' | 'notify'>()
   const guided = useRef(false)
+  // DEBUG：调试页模拟的通知权限，只给这次弹窗用，不改真实的权限状态
+  const [fakeStatus, setFakeStatus] = useState<NotificationStatus>()
   const running = useRef(false)
   const input = useRef<HTMLTextAreaElement>(null)
 
@@ -100,15 +109,15 @@ export function App() {
           .notificationStatus()
           .catch(() => 'unsupported' as const)
         setPermission(status)
-        // 应用里开着通知、系统还没允许时引导一次
+        // 看过欢迎页、应用里开着通知、系统还没允许时，只引导通知一次；没看过的由下面的欢迎页一起说明
+        if (guided.current) return
+        guided.current = true
         if (
+          s.welcomed &&
           s.settings.notify &&
-          (status === 'notDetermined' || status === 'denied') &&
-          !guided.current
-        ) {
-          guided.current = true
-          setGuide(true)
-        }
+          (status === 'notDetermined' || status === 'denied')
+        )
+          setGuide('notify')
       })
       .catch((e) => toast.error(String(e), { id: 'connection-error' }))
     const key = (e: KeyboardEvent) => {
@@ -142,6 +151,21 @@ export function App() {
         window.removeEventListener('focus', refreshPermission),
       ),
     )
+    // DEBUG：调试页打开引导，可带模拟的通知权限（dev 查不了真实权限）
+    const showGuide = (e: Event) => {
+      const { mode, status } = (e as CustomEvent<DebugGuide>).detail
+      setGuide(undefined)
+      setFakeStatus(status)
+      setTimeout(() => setGuide(mode))
+    }
+    if (import.meta.env.DEV) {
+      window.addEventListener('fox-nudge:guide', showGuide)
+      stops.push(
+        Promise.resolve(() =>
+          window.removeEventListener('fox-nudge:guide', showGuide),
+        ),
+      )
+    }
     window.addEventListener('keydown', key)
     window.addEventListener('error', onError)
     window.addEventListener('unhandledrejection', onRejection)
@@ -185,6 +209,11 @@ export function App() {
       setWorking(false)
     }
   }
+
+  // 首次启动、清除数据后（welcomed 变回 false）弹欢迎页
+  useEffect(() => {
+    if (loaded && !snapshot.welcomed) setGuide('welcome')
+  }, [loaded, snapshot.welcomed])
 
   function save(settings: SettingsData) {
     return run(() => api.saveSettings(settings))
@@ -347,10 +376,16 @@ export function App() {
       </div>
       {guide && (
         <NotifyGuide
-          status={permission}
+          snapshot={snapshot}
+          status={fakeStatus ?? permission}
+          welcome={guide === 'welcome'}
+          onAvatar={(avatarStyle) =>
+            void save({ ...snapshot.settings, avatarStyle })
+          }
           onDone={(status) => {
-            setPermission(status)
-            setGuide(false)
+            if (!fakeStatus) setPermission(status)
+            setFakeStatus(undefined)
+            setGuide(undefined)
           }}
         />
       )}
