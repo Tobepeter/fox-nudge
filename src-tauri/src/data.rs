@@ -22,6 +22,9 @@ pub struct Settings {
     pub poll_seconds: u32,
     /// 系统提示音名，none 为静音
     pub sound: String,
+    /// 提示音跟随系统：随通知一起由系统播放，专注模式、共享屏幕、关掉通知声音时一起静音；
+    /// 关掉则由 FoxNudge 自己播放，什么情况都会响
+    pub sound_follow_system: bool,
     pub notify: bool,
     /// minimal：通知只显示消息内容；full：标题是发送者昵称，右侧带头像
     pub notify_style: String,
@@ -42,6 +45,7 @@ impl Default for Settings {
             mode: "stream".into(),
             poll_seconds: 60,
             sound: "Glass".into(),
+            sound_follow_system: true,
             notify: true,
             notify_style: "minimal".into(),
             dock_mode: "window".into(),
@@ -188,6 +192,9 @@ pub struct Message {
     pub encrypted: bool,
     /// ok；undecryptable：解不开的密文
     pub status: String,
+    /// 仅自己：没经过服务器，只在本机记录和提醒
+    #[serde(default)]
+    pub to_self: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -201,6 +208,8 @@ pub struct Data {
     pub last_id: Option<String>,
     /// 「最近发过」只显示这个时间（秒）之后发的；清空最近只改它，不删历史
     pub recent_cleared_at: i64,
+    /// 暂停提醒到这个时间（秒），0 表示没暂停
+    pub paused_until: i64,
 }
 impl Default for Data {
     fn default() -> Self {
@@ -211,6 +220,7 @@ impl Default for Data {
             messages: vec![],
             last_id: None,
             recent_cleared_at: 0,
+            paused_until: 0,
         }
     }
 }
@@ -349,6 +359,7 @@ mod tests {
             sender_id: None,
             sender_name: None,
             sender_avatar: None,
+            to_self: false,
             mine: false,
             encrypted: false,
             status: "ok".into(),

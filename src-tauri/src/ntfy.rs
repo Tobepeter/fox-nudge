@@ -410,6 +410,7 @@ pub fn decode(event: &Value, identity: &Identity, key: Option<&str>) -> Option<M
                 sender_id: Some(p.from.id),
                 sender_name: Some(p.from.name),
                 sender_avatar: Some(p.from.avatar).filter(|a| !a.is_empty()),
+                to_self: false,
                 encrypted: true,
                 status: "ok".into(),
             },
@@ -421,6 +422,7 @@ pub fn decode(event: &Value, identity: &Identity, key: Option<&str>) -> Option<M
                 sender_id: None,
                 sender_name: None,
                 sender_avatar: None,
+                to_self: false,
                 mine: false,
                 encrypted: true,
                 status: "undecryptable".into(),
@@ -446,6 +448,7 @@ pub fn decode(event: &Value, identity: &Identity, key: Option<&str>) -> Option<M
         sender_id,
         sender_name,
         sender_avatar,
+        to_self: false,
         encrypted: false,
         status: "ok".into(),
     })
@@ -502,7 +505,7 @@ pub fn receive(app: &AppHandle, event: &Value, backlog: bool, cursor: bool, aler
     }
     let _ = app.emit("message", &message);
     crate::notify(app);
-    if message.mine || !alert {
+    if message.mine || !alert || crate::pause::hold(app, &message) {
         return;
     }
     if backlog {
@@ -516,7 +519,7 @@ pub fn receive(app: &AppHandle, event: &Value, backlog: bool, cursor: bool, aler
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(1500)).await;
                 let pending = std::mem::take(&mut *app.state::<AppState>().hub.backlog.lock().unwrap());
-                crate::alert::backlog(&app, &pending);
+                crate::alert::batch(&app, "离线期间", &pending);
             });
         }
     } else {
@@ -524,15 +527,52 @@ pub fn receive(app: &AppHandle, event: &Value, backlog: bool, cursor: bool, aler
     }
 }
 
-pub async fn publish(app: &AppHandle, title: String, body: String) -> Result<Message, String> {
+fn check_body(body: &str) -> Result<String, String> {
     let body = body.trim().to_string();
-    let title = title.trim().to_string();
     if body.is_empty() {
         return Err("消息不能为空".into());
     }
     if body.chars().count() > crate::data::BODY_LIMIT {
         return Err(format!("消息最长 {} 个字", crate::data::BODY_LIMIT));
     }
+    Ok(body)
+}
+
+/// 仅自己：不经过服务器，直接在本机记一条并提醒（比如 Agent 跑完任务提醒自己），不受节流限制
+pub fn deliver_self(app: &AppHandle, title: String, body: String) -> Result<Message, String> {
+    let body = check_body(&body)?;
+    let message = {
+        let state = app.state::<AppState>();
+        let mut data = state.data.lock().unwrap();
+        let message = Message {
+            id: format!("self-{}", uuid::Uuid::new_v4().simple()),
+            time: chrono::Utc::now().timestamp(),
+            title: title.trim().to_string(),
+            body,
+            sender_id: Some(data.identity.id.clone()),
+            sender_name: Some(data.identity.name.clone()),
+            sender_avatar: Some(data.settings.avatar_style.clone()),
+            mine: true,
+            encrypted: false,
+            status: "ok".into(),
+            to_self: true,
+        };
+        data.push_message(message.clone());
+        let _ = crate::data::save(&data);
+        message
+    };
+    log::info("message", "self", json!({ "messageId": message.id }));
+    let _ = app.emit("message", &message);
+    crate::notify(app);
+    if !crate::pause::hold(app, &message) {
+        crate::alert::message(app, &message);
+    }
+    Ok(message)
+}
+
+pub async fn publish(app: &AppHandle, title: String, body: String) -> Result<Message, String> {
+    let body = check_body(&body)?;
+    let title = title.trim().to_string();
     let cfg = config(app).ok_or("请先在设置里填写服务器和主题")?;
     // 客户端节流：连发几条后冷却逐级加长，界面只提示不显示时间
     if let Err(wait) = app.state::<AppState>().hub.throttle.lock().unwrap().check(Instant::now()) {

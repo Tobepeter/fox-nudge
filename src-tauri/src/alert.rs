@@ -21,10 +21,14 @@ fn sender(message: &Message) -> String {
     }
 }
 
-fn settings(app: &AppHandle) -> (bool, String) {
+fn settings(app: &AppHandle) -> (bool, String, bool) {
     let state = app.state::<AppState>();
     let data = state.data.lock().unwrap();
-    (data.settings.notify, data.settings.sound.clone())
+    (data.settings.notify, data.settings.sound.clone(), data.settings.sound_follow_system)
+}
+
+fn audible(sound: &str) -> bool {
+    sound != "none" && crate::data::SOUNDS.contains(&sound)
 }
 
 fn full_style(app: &AppHandle) -> bool {
@@ -86,7 +90,8 @@ pub fn message(app: &AppHandle, message: &Message) {
     show(app, &title, &body, full.then(|| AvatarRequest::of(message)));
 }
 
-pub fn backlog(app: &AppHandle, messages: &[Message]) {
+/// 一批错过的消息合并成一条提醒，when：离线期间、暂停期间
+pub fn batch(app: &AppHandle, when: &str, messages: &[Message]) {
     match messages {
         [] => {}
         [one] => message(app, one),
@@ -98,40 +103,54 @@ pub fn backlog(app: &AppHandle, messages: &[Message]) {
                 (true, true) => format!("最新一条来自 {}：{}", sender(last), last.body),
                 (true, false) => format!("最新一条：{}", last.body),
             };
-            show(app, &format!("离线期间收到 {} 条消息", many.len()), &preview, full.then(|| AvatarRequest::of(last)));
+            show(app, &format!("{when}收到 {} 条消息", many.len()), &preview, full.then(|| AvatarRequest::of(last)));
         }
     }
 }
 
-/// 提示音立即响；通知在后台线程里取到头像（或超时）后再弹，不卡接收流程
+/// 提示音跟随系统时交给通知一起播放，系统压掉通知（专注模式、共享屏幕等）就一起不响；
+/// 不跟随或关了应用内通知时由 FoxNudge 立即播放。通知在后台线程里取到头像（或超时）后再弹，不卡接收流程
 fn show(app: &AppHandle, title: &str, body: &str, avatar: Option<AvatarRequest>) {
-    let (enabled, sound) = settings(app);
-    play(&sound);
+    let (enabled, sound, follow) = settings(app);
+    let with_notification = enabled && follow && audible(&sound);
+    if !with_notification {
+        play(&sound);
+    }
     if !enabled {
         return;
     }
     let (app, title, body) = (app.clone(), title.to_string(), body.to_string());
     std::thread::spawn(move || {
         let image = avatar.filter(|_| !tauri::is_dev()).and_then(|a| avatar_path(&app, a));
-        notify_with(&app, &title, &body, image);
+        notify_with(&app, &title, &body, image, with_notification.then_some(sound));
     });
 }
 
 pub fn notify(app: &AppHandle, title: &str, body: &str) {
     let (app, title, body) = (app.clone(), title.to_string(), body.to_string());
-    std::thread::spawn(move || notify_with(&app, &title, &body, None));
+    std::thread::spawn(move || notify_with(&app, &title, &body, None, None));
 }
 
 /// 弹一条系统通知。
 /// tauri dev 没有 .app 包，通知插件会借用「终端」的身份，终端没有通知授权时系统直接丢弃，
 /// 所以 tauri dev 改用系统自带的 osascript 弹（显示为「脚本编辑器」，不支持图片）；
 /// 安装版和 debug 版 .app 用新版 UNUserNotificationCenter（mac-usernotifications），右侧能带头像图片
-fn notify_with(app: &AppHandle, title: &str, body: &str, image: Option<PathBuf>) {
+/// sound：随通知播放的系统音效名，None 表示通知不带声音
+fn notify_with(app: &AppHandle, title: &str, body: &str, image: Option<PathBuf>, sound: Option<String>) {
     if tauri::is_dev() {
-        // 标题和正文作为参数传入，不拼进脚本，免去转义
+        // 标题、正文、音效作为参数传入，不拼进脚本，免去转义；音效为空时不带声音
+        let script = [
+            "on run argv",
+            "if item 3 of argv is \"\" then",
+            "display notification (item 2 of argv) with title (item 1 of argv)",
+            "else",
+            "display notification (item 2 of argv) with title (item 1 of argv) sound name (item 3 of argv)",
+            "end if",
+            "end run",
+        ];
         let result = std::process::Command::new("/usr/bin/osascript")
-            .args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run"])
-            .args([title, body])
+            .args(script.iter().flat_map(|line| ["-e", line]))
+            .args([title, body, sound.as_deref().unwrap_or("")])
             .output();
         match result {
             Ok(out) if out.status.success() => {}
@@ -147,6 +166,9 @@ fn notify_with(app: &AppHandle, title: &str, body: &str, image: Option<PathBuf>)
         if let Some(path) = image.as_ref().and_then(|p| p.to_str()) {
             notification = notification.image_path(path);
         }
+        if let Some(sound) = &sound {
+            notification = notification.sound(sound.as_str());
+        }
         // 用异步的 send：它的阻塞写法会检查主线程事件循环是否空闲，Tauri 主循环忙时会误判失败
         if let Err(e) = tauri::async_runtime::block_on(mac_usernotifications::send(notification)) {
             log::warn("alert", "notification-failed", json!({ "error": e.to_string() }));
@@ -155,7 +177,7 @@ fn notify_with(app: &AppHandle, title: &str, body: &str, image: Option<PathBuf>)
     #[cfg(not(target_os = "macos"))]
     {
         use tauri_plugin_notification::NotificationExt;
-        let _ = image;
+        let _ = (image, sound);
         if let Err(e) = app.notification().builder().title(title).body(body).show() {
             log::warn("alert", "notification-failed", json!({ "error": e.to_string() }));
         }
@@ -271,6 +293,7 @@ pub fn preview_notification(app: AppHandle) {
         sender_id: Some(identity.id),
         sender_name: Some(identity.name),
         sender_avatar: Some(avatar),
+        to_self: false,
         mine: false,
         encrypted: true,
         status: "ok".into(),
@@ -280,7 +303,7 @@ pub fn preview_notification(app: AppHandle) {
 
 /// 用系统自带的提示音，afplay 在后台线程里跑完并回收
 pub fn play(sound: &str) {
-    if sound == "none" || !crate::data::SOUNDS.contains(&sound) {
+    if !audible(sound) {
         return;
     }
     let path = format!("/System/Library/Sounds/{sound}.aiff");
@@ -303,6 +326,7 @@ mod tests {
             sender_id: id.map(String::from),
             sender_name: name.map(String::from),
             sender_avatar: avatar.map(String::from),
+            to_self: false,
             mine: false,
             encrypted: true,
             status: "ok".into(),

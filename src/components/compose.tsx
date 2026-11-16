@@ -37,6 +37,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
+import { Switch } from './ui/switch'
 import { AutoTextarea } from './auto-textarea'
 import { ConfirmAction } from './confirm-action'
 import { ConnectionStatus } from './connection-status'
@@ -228,6 +229,8 @@ export function Compose(props: {
   setDraft: (value: string) => void
   sending: boolean
   send: (body: string) => Promise<boolean>
+  toSelf: boolean
+  setToSelf: (value: boolean) => void
   saveTemplates: (templates: Template[]) => Promise<boolean>
   resetTemplates: () => Promise<boolean>
   setRecentCleared: (at: number) => Promise<boolean>
@@ -392,6 +395,10 @@ export function Compose(props: {
           connection={snapshot.connection}
           onReconnect={props.reconnect}
         />
+        <label className='ml-auto flex items-center gap-2 text-muted-foreground'>
+          仅自己
+          <Switch checked={props.toSelf} onCheckedChange={props.setToSelf} />
+        </label>
       </div>
       {/* 内容区够宽时左右两张卡片，窄时上下排；两张卡片在编辑、为空时都保持原位，布局不跳 */}
       <div className='app-scroll @container -mx-4 min-h-0 flex-1 overflow-y-auto px-4'>

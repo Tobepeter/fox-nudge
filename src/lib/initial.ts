@@ -9,6 +9,7 @@ export const initial: Snapshot = {
     mode: 'stream',
     pollSeconds: 60,
     sound: 'Glass',
+    soundFollowSystem: true,
     notify: true,
     notifyStyle: 'minimal',
     dockMode: 'window',
@@ -33,6 +34,7 @@ export const initial: Snapshot = {
   tokenSource: 'none',
   keySource: 'none',
   recentClearedAt: 0,
+  pausedUntil: 0,
   version: '',
   dev: false,
 }

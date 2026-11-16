@@ -14,6 +14,7 @@ const msg = (id: string, time: number, body: string, mine = true, status = 'ok')
   mine,
   encrypted: true,
   status,
+  toSelf: false,
 })
 
 test('最近发过：只要自己发的、去重、排除文案、最多 10 条、清空时间点之前的不算', () => {

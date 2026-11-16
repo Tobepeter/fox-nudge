@@ -17,6 +17,7 @@ import { ANONYMOUS, cleanName, hasName, NAME_LIMIT } from '../lib/avatar-text'
 import {
   api,
   desktop,
+  type CliStatus,
   type NotificationStatus,
   type Settings as SettingsData,
   type Snapshot,
@@ -318,6 +319,16 @@ function General({
             disabled={disabled}
           />
         </Row>
+        <Row
+          label='提示音跟随系统'
+          help='开着时随系统通知一起响，专注模式、共享屏幕、系统里关了通知或通知声音时都不响；关掉则总会响'
+        >
+          <Switch
+            checked={settings.soundFollowSystem}
+            disabled={disabled || settings.sound === 'none'}
+            onCheckedChange={(soundFollowSystem) => set({ soundFollowSystem })}
+          />
+        </Row>
       </Section>
       <Section title='桌面'>
         <Row label='外观'>
@@ -352,6 +363,31 @@ function General({
         </Row>
       </Section>
     </>
+  )
+}
+
+// 安装是在 ~/.local/bin 写一个转发脚本，指向当前程序；卸载只删带 FoxNudge 标记的那个文件
+// 按钮文字本身说明状态（安装 / 卸载），装好后提示怎么查用法；同名文件不是我们装的时由 Rust 报错提示
+function CliButton(props: { disabled: boolean; className: string }) {
+  const [status, setStatus] = useState<CliStatus>()
+  useEffect(() => {
+    api.cliStatus().then(setStatus, () => {})
+  }, [])
+  const installed = status?.state === 'installed'
+  const change = () =>
+    (installed ? api.uninstallCli() : api.installCli()).then(
+      (next) => {
+        setStatus(next)
+        toast.success(next.state === 'installed' ? '已安装，终端里输入 fox-nudge help 查看用法' : '已卸载命令行', {
+          id: 'cli',
+        })
+      },
+      (e) => toast.error(String(e), { id: 'cli' }),
+    )
+  return (
+    <Button variant='outline' className={props.className} disabled={props.disabled || !status} onClick={() => void change()}>
+      {installed ? '卸载命令行' : '安装命令行'}
+    </Button>
   )
 }
 
@@ -438,20 +474,14 @@ function Advanced({ snapshot, disabled, set, run }: PanelProps) {
           />
         </Row>
       </Section>
+      {/* 按钮本身说明用途，不再加行名；等宽网格排齐，上排工具、下排重置和清除 */}
       <Section title='维护'>
-        <div className='flex flex-wrap gap-2 pt-1'>
-          <Button
-            variant='outline'
-            disabled={!desktop}
-            onClick={() => void run(api.openLogs)}
-          >
+        <div className='grid grid-cols-3 gap-2 pt-1'>
+          <CliButton className='w-full' disabled={disabled} />
+          <Button variant='outline' className='w-full' disabled={!desktop} onClick={() => void run(api.openLogs)}>
             打开调试日志
           </Button>
-          <Button
-            variant='outline'
-            disabled={disabled}
-            onClick={() => void run(api.reconnect)}
-          >
+          <Button variant='outline' className='w-full' disabled={disabled} onClick={() => void run(api.reconnect)}>
             重新连接
           </Button>
           <ConfirmAction
@@ -459,6 +489,11 @@ function Advanced({ snapshot, disabled, set, run }: PanelProps) {
             description='恢复默认设置？昵称、文案、历史、令牌和密钥会保留'
             success='已恢复默认设置'
             disabled={disabled}
+            trigger={
+              <Button variant='outline' className='w-full' disabled={disabled}>
+                重置设置
+              </Button>
+            }
             onConfirm={() => run(api.resetSettings)}
           />
           <ConfirmAction
@@ -467,11 +502,7 @@ function Advanced({ snapshot, disabled, set, run }: PanelProps) {
             success='已清除全部数据'
             disabled={disabled}
             trigger={
-              <Button
-                variant='outline'
-                className='text-destructive'
-                disabled={disabled}
-              >
+              <Button variant='outline' className='w-full text-destructive' disabled={disabled}>
                 清除数据
               </Button>
             }

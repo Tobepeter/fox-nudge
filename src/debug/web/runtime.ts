@@ -46,6 +46,7 @@ export class WebRuntime {
   permission: 'notDetermined' | 'denied' | 'authorized' = 'notDetermined'
   #listeners = new Map<string, Set<Listener>>()
   #timers = new Set<ReturnType<typeof setTimeout>>()
+  #cli = false
   #initial: Snapshot
   #connectMs: number
   #retryMs: number
@@ -234,11 +235,15 @@ export class WebRuntime {
         const title = String(args.title ?? '').trim()
         if (!body) throw new Error('消息不能为空')
         if ([...body].length > BODY_LIMIT) throw new Error(`消息最长 ${BODY_LIMIT} 个字`)
-        if (!this.#configured()) throw new Error('请先在设置里填写服务器和主题')
-        if (this.state.settings.encrypt && this.state.keySource === 'none')
-          throw new Error('加密已开启，但还没有共享密钥，请在设置里填写')
-        if (!this.#checkThrottle()) throw new Error('发得太快了，稍后再试')
-        if (this.state.connection.state === 'waiting') throw new Error('连不上服务器')
+        // 仅自己：不经过服务器，本机记录并提醒，不受节流和连接状态影响
+        const toSelf = !!args.toSelf
+        if (!toSelf) {
+          if (!this.#configured()) throw new Error('请先在设置里填写服务器和主题')
+          if (this.state.settings.encrypt && this.state.keySource === 'none')
+            throw new Error('加密已开启，但还没有共享密钥，请在设置里填写')
+          if (!this.#checkThrottle()) throw new Error('发得太快了，稍后再试')
+          if (this.state.connection.state === 'waiting') throw new Error('连不上服务器')
+        }
         const message: Message = {
           id: `web-${randomId(10)}`,
           time: Math.floor(Date.now() / 1000),
@@ -248,8 +253,13 @@ export class WebRuntime {
           senderName: this.state.identity.name,
           senderAvatar: this.state.settings.avatarStyle,
           mine: true,
-          encrypted: this.state.settings.encrypt,
+          encrypted: !toSelf && this.state.settings.encrypt,
           status: 'ok',
+          toSelf,
+        }
+        if (toSelf) {
+          this.#push(message)
+          return structuredClone(message)
         }
         // 和桌面一致：发送结果先入列表，订阅回声稍后到达
         this.#push(message, false)
@@ -258,6 +268,35 @@ export class WebRuntime {
       }
       case 'reconnect':
         this.#connect()
+        return
+      case 'pause_alerts': {
+        // 模拟只算截止时间并到点恢复，不做错过消息的合并提醒
+        const now = Date.now() / 1000
+        const morning = new Date()
+        if (morning.getHours() >= 9) morning.setDate(morning.getDate() + 1)
+        morning.setHours(9, 0, 0, 0)
+        const minutes: Record<string, number> = { '30m': 30, '1h': 60 }
+        const until = args.preset === 'morning' ? Math.floor(morning.getTime() / 1000) : Math.floor(now + (minutes[String(args.preset)] ?? 0) * 60)
+        if (until <= now) throw new Error('未知的暂停时长')
+        this.state.pausedUntil = until
+        const at = until
+        this.#later((until - now) * 1000, () => {
+          if (this.state.pausedUntil !== at) return
+          this.state.pausedUntil = 0
+          this.#changed()
+        })
+        this.#changed()
+        return until
+      }
+      case 'cli_status':
+        return { state: this.#cli ? 'installed' : 'none', path: '~/.local/bin/fox-nudge', target: '' }
+      case 'install_cli':
+      case 'uninstall_cli':
+        this.#cli = name === 'install_cli'
+        return { state: this.#cli ? 'installed' : 'none', path: '~/.local/bin/fox-nudge', target: '' }
+      case 'resume_alerts':
+        this.state.pausedUntil = 0
+        this.#changed()
         return
       case 'set_recent_cleared':
         this.state.recentClearedAt = Number(args.at)
@@ -327,6 +366,7 @@ export class WebRuntime {
           mine: !unknown && senderId === this.state.identity.id,
           encrypted: !!input.encrypted || undecryptable,
           status: undecryptable ? 'undecryptable' : 'ok',
+          toSelf: false,
         }
         this.#push(message)
         if (message.mine) return message.id

@@ -8,7 +8,12 @@ mode: string, pollSeconds: number,
 /**
  * 系统提示音名，none 为静音
  */
-sound: string, notify: boolean, 
+sound: string, 
+/**
+ * 提示音跟随系统：随通知一起由系统播放，专注模式、共享屏幕、关掉通知声音时一起静音；
+ * 关掉则由 FoxNudge 自己播放，什么情况都会响
+ */
+soundFollowSystem: boolean, notify: boolean, 
 /**
  * minimal：通知只显示消息内容；full：标题是发送者昵称，右侧带头像
  */

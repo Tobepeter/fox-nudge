@@ -13,7 +13,7 @@ const at = (d: Date, id: string): Message => ({
   senderAvatar: null,
   mine: false,
   encrypted: true,
-  status: 'ok',
+  status: 'ok', toSelf: false,
 })
 
 test('按今天、昨天、前天、具体日期分组，最新在上，跨年带年份', () => {

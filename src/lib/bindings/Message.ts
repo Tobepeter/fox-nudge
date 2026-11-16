@@ -16,4 +16,8 @@ senderAvatar: string | null, mine: boolean, encrypted: boolean,
 /**
  * ok；undecryptable：解不开的密文
  */
-status: string, };
+status: string, 
+/**
+ * 仅自己：没经过服务器，只在本机记录和提醒
+ */
+toSelf: boolean, };

@@ -17,6 +17,9 @@ export const available = desktop || webPreview
 /** unsupported：开发版没有应用包，查不了 */
 export type NotificationStatus = 'unsupported' | 'notDetermined' | 'denied' | 'authorized'
 
+/** installed：装的是 FoxNudge 的脚本；foreign：同名文件不是我们装的；none：没装 */
+export type CliStatus = { state: 'installed' | 'foreign' | 'none'; path: string; target: string }
+
 export type AvatarRequest = { key: string; id: string | null; name: string | null; avatar: string | null }
 
 export type InjectMessage = {
@@ -62,10 +65,16 @@ export const api = {
   resetSettings: () => call('reset_settings'),
   setSecret: (kind: 'token' | 'key', value: string) => call('set_secret', { kind, value }),
   generateKey: () => call<string>('generate_key'),
-  send: (title: string, body: string) => call<Message>('send', { title, body }),
+  // toSelf：只发给自己，本机记录并提醒，不经过服务器
+  send: (title: string, body: string, toSelf = false) => call<Message>('send', { title, body, toSelf }),
   reconnect: () => call('reconnect'),
   clearHistory: () => call('clear_history'),
   setRecentCleared: (at: number) => call('set_recent_cleared', { at }),
+  pauseAlerts: (preset: '30m' | '1h' | 'morning') => call<number>('pause_alerts', { preset }),
+  resumeAlerts: () => call('resume_alerts'),
+  cliStatus: () => call<CliStatus>('cli_status'),
+  installCli: () => call<CliStatus>('install_cli'),
+  uninstallCli: () => call<CliStatus>('uninstall_cli'),
   wipeData: () => call('wipe_data'),
   openLogs: () => call('open_logs'),
   testSound: (sound: string) => call('test_sound', { sound }),

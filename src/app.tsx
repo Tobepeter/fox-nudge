@@ -12,6 +12,7 @@ import { Compose } from './components/compose'
 import { History } from './components/history'
 import { renderAvatarPng } from './components/avatar'
 import { NotifyGuide } from './components/notify-guide'
+import { PauseControl } from './components/pause-control'
 import { Settings } from './components/settings'
 import { initial } from './lib/initial'
 import {
@@ -189,11 +190,14 @@ export function App() {
     return run(() => api.saveSettings(settings))
   }
 
+  // 仅自己：只在这次运行里有效，重启回到广播，免得忘了关、别人一直收不到
+  const [toSelf, setToSelf] = useState(false)
+
   async function send(body: string) {
     if (!body.trim() || sending) return false
     setSending(true)
     try {
-      await api.send('', body)
+      await api.send('', body, toSelf)
       await refresh()
       return true
     } catch (e) {
@@ -244,10 +248,15 @@ export function App() {
           />
         )}
         <div
-          className={`mb-4 flex items-center gap-2 px-2 font-semibold ${desktop ? '' : 'pt-3'}`}
+          className={`group/title mb-4 flex items-center gap-2 px-2 font-semibold ${desktop ? '' : 'pt-3'}`}
         >
           <img src='/app-icon.png' alt='' className='size-6 rounded-md' />
           FoxNudge
+          <PauseControl
+            until={snapshot.pausedUntil}
+            onPause={(preset) => void run(() => api.pauseAlerts(preset))}
+            onResume={() => void run(api.resumeAlerts)}
+          />
         </div>
         <nav className='space-y-1'>
           {pages.map((item) => (
@@ -296,6 +305,8 @@ export function App() {
               setDraft={setDraft}
               sending={sending}
               send={send}
+              toSelf={toSelf}
+              setToSelf={setToSelf}
               saveTemplates={(templates) =>
                 run(() => api.saveTemplates(templates))
               }

@@ -1,10 +1,13 @@
 mod alert;
+mod cli;
 mod crypto;
 mod data;
 #[cfg(debug_assertions)]
 mod debug;
+mod instance;
 mod log;
 mod ntfy;
+mod pause;
 mod throttle;
 mod tray;
 
@@ -19,6 +22,7 @@ pub struct AppState {
     pub data: Mutex<Data>,
     pub secrets: Mutex<Secrets>,
     pub hub: ntfy::Hub,
+    pub pause: pause::Pause,
 }
 
 #[derive(Clone, Serialize)]
@@ -36,6 +40,8 @@ struct Snapshot {
     token_source: String,
     key_source: String,
     recent_cleared_at: i64,
+    /// 暂停提醒截止时间（秒），0 表示没暂停
+    paused_until: i64,
     version: String,
     dev: bool,
 }
@@ -83,6 +89,7 @@ fn snapshot(app: &tauri::AppHandle) -> Snapshot {
         }
         .into(),
         recent_cleared_at: data.recent_cleared_at,
+        paused_until: pause::until(app).unwrap_or(0),
         version: env!("CARGO_PKG_VERSION").into(),
         dev: cfg!(debug_assertions),
     }
@@ -301,7 +308,10 @@ fn generate_key() -> String {
 }
 
 #[tauri::command]
-async fn send(app: tauri::AppHandle, title: String, body: String) -> Result<Message, String> {
+async fn send(app: tauri::AppHandle, title: String, body: String, to_self: Option<bool>) -> Result<Message, String> {
+    if to_self.unwrap_or(false) {
+        return ntfy::deliver_self(&app, title, body);
+    }
     ntfy::publish(&app, title, body).await
 }
 
@@ -316,6 +326,17 @@ fn set_recent_cleared(app: tauri::AppHandle, at: i64) -> Result<(), String> {
     save(&app, |d| d.recent_cleared_at = at)?;
     notify(&app);
     Ok(())
+}
+
+/// 暂停提醒，preset：30m、1h、morning；暂停中再调用就是改截止时间
+#[tauri::command]
+fn pause_alerts(app: tauri::AppHandle, preset: String) -> Result<i64, String> {
+    pause::start(&app, &preset)
+}
+
+#[tauri::command]
+fn resume_alerts(app: tauri::AppHandle) {
+    pause::resume(&app, "manual");
 }
 
 #[tauri::command]
@@ -385,8 +406,13 @@ fn log_client(level: String, event: String, detail: serde_json::Value) {
 }
 
 fn main() {
+    // 带命令参数时只当命令行工具用，不起界面
+    if let Some(code) = cli::run(&std::env::args().collect::<Vec<_>>()) {
+        std::process::exit(code);
+    }
     let launched = std::time::Instant::now();
     let hidden = std::env::args().any(|a| a == "--hidden");
+    let replaced = instance::take_over();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             let handle = app.clone();
@@ -412,6 +438,11 @@ fn main() {
         reconnect,
         clear_history,
         set_recent_cleared,
+        pause_alerts,
+        resume_alerts,
+        cli::cli_status,
+        cli::install_cli,
+        cli::uninstall_cli,
         wipe_data,
         open_logs,
         test_sound,
@@ -441,6 +472,11 @@ fn main() {
         reconnect,
         clear_history,
         set_recent_cleared,
+        pause_alerts,
+        resume_alerts,
+        cli::cli_status,
+        cli::install_cli,
+        cli::uninstall_cli,
         wipe_data,
         open_logs,
         test_sound,
@@ -464,7 +500,12 @@ fn main() {
                 data: Mutex::new(data),
                 secrets: Mutex::new(data::read_secrets()),
                 hub: ntfy::Hub::default(),
+                pause: pause::Pause::default(),
             });
+            instance::claim();
+            if let Some(exe) = &replaced {
+                log::info("main", "took-over", json!({ "from": exe }));
+            }
             log::info(
                 "main",
                 "launch",
@@ -476,6 +517,8 @@ fn main() {
             );
             apply_theme(&handle, &theme);
             tray::init(&handle)?;
+            pause::init(&handle);
+            cli::serve(&handle);
             ntfy::start(handle.clone());
             #[cfg(debug_assertions)]
             debug::start(&handle);
@@ -508,7 +551,10 @@ fn main() {
             }
         }
         RunEvent::Reopen { .. } => show(app),
-        RunEvent::Exit => log::info("main", "exit", json!({})),
+        RunEvent::Exit => {
+            cli::stop();
+            log::info("main", "exit", json!({}));
+        }
         _ => {}
     });
 }

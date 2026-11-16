@@ -5,7 +5,6 @@ import { toast } from 'sonner'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
-import { connectionText } from '../components/connection-status'
 import { api, type InjectMessage, type Snapshot } from '../lib/runtime'
 
 const tabs = [
@@ -162,13 +161,6 @@ export function DebugPage(props: { snapshot: Snapshot }) {
       </div>
       <div className='app-scroll -mx-4 min-h-0 flex-1 overflow-y-auto px-4'>
         {tab === 'mock' ? <MockTab /> : <StateTab snapshot={snapshot} />}
-      </div>
-      <div className='flex shrink-0 items-center justify-between gap-3 border-t pt-3 text-muted-foreground'>
-        <span>
-          {connectionText(snapshot.connection)} · {snapshot.messages.length}{' '}
-          条消息
-        </span>
-        <code>__DEBUG__.nudge.app</code>
       </div>
     </section>
   )

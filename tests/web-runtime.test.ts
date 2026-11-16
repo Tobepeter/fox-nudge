@@ -12,6 +12,7 @@ const initial: Snapshot = {
     mode: 'stream',
     pollSeconds: 60,
     sound: 'Glass',
+    soundFollowSystem: true,
     notify: true,
     notifyStyle: 'minimal',
     dockMode: 'window',
@@ -28,6 +29,7 @@ const initial: Snapshot = {
   tokenSource: 'none',
   keySource: 'none',
   recentClearedAt: 0,
+  pausedUntil: 0,
   version: '0.1.0',
   dev: false,
 }

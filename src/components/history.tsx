@@ -72,7 +72,7 @@ export function History(props: {
                             avatar={m.mine ? props.avatarStyle : m.senderAvatar}
                             size={24}
                           />
-                          <OverflowText text={m.mine ? '我' : m.senderName || '—'} />
+                          <OverflowText text={m.toSelf ? '仅自己' : m.mine ? '我' : m.senderName || '—'} />
                         </span>
                         <OverflowText
                           text={text}
