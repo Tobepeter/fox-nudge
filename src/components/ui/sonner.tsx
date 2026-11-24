@@ -32,7 +32,17 @@ export function Toaster(props: ToasterProps) {
       }
       {...props}
       closeButton
-      toastOptions={{ ...props.toastOptions, closeButtonAriaLabel: '关闭通知' }}
+      toastOptions={{
+        ...props.toastOptions,
+        closeButtonAriaLabel: '关闭通知',
+        // sonner 自带的按钮是黑白灰阶，换成应用主题色；它的样式优先级高，用 ! 覆盖
+        classNames: {
+          actionButton: 'bg-primary! text-primary-foreground! hover:bg-primary/80!',
+          closeButton:
+            'border-border! bg-popover! text-muted-foreground! hover:bg-muted! hover:text-foreground!',
+          ...props.toastOptions?.classNames,
+        },
+      }}
     />
   )
 }
