@@ -2,6 +2,7 @@
 import type { Connection } from "./Connection";
 import type { Identity } from "./Identity";
 import type { Message } from "./Message";
+import type { Peer } from "./Peer";
 import type { Settings } from "./Settings";
 import type { Template } from "./Template";
 
@@ -21,4 +22,8 @@ pausedUntil: number,
 /**
  * 看过新手引导
  */
-welcomed: boolean, version: string, dev: boolean, };
+welcomed: boolean, 
+/**
+ * 其他设备的在线状态，只在内存里
+ */
+peers: Array<Peer>, version: string, dev: boolean, };

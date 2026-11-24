@@ -128,6 +128,7 @@ fn schedule(app: &AppHandle, at: i64) {
 }
 
 fn changed(app: &AppHandle) {
+    crate::presence::poke(app);
     crate::notify(app);
     crate::tray::refresh(app);
 }

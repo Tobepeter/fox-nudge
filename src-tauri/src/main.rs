@@ -8,6 +8,7 @@ mod instance;
 mod log;
 mod ntfy;
 mod pause;
+mod presence;
 mod throttle;
 mod tray;
 
@@ -23,6 +24,7 @@ pub struct AppState {
     pub secrets: Mutex<Secrets>,
     pub hub: ntfy::Hub,
     pub pause: pause::Pause,
+    pub presence: presence::Presence,
 }
 
 #[derive(Clone, Serialize)]
@@ -47,6 +49,8 @@ struct Snapshot {
     paused_until: i64,
     /// 看过新手引导
     welcomed: bool,
+    /// 其他设备的在线状态，只在内存里
+    peers: Vec<presence::Peer>,
     version: String,
     dev: bool,
 }
@@ -98,6 +102,7 @@ fn snapshot(app: &tauri::AppHandle) -> Snapshot {
         recent_hidden: data.recent_hidden,
         paused_until: pause::until(app).unwrap_or(0),
         welcomed: data.welcomed,
+        peers: presence::peers(app),
         version: env!("CARGO_PKG_VERSION").into(),
         dev: cfg!(debug_assertions),
     }
@@ -221,6 +226,9 @@ fn save_settings(app: tauri::AppHandle, mut settings: Settings) -> Result<(), St
             d.last_id = None;
         }
     })?;
+    if settings.avatar_style != previous.avatar_style {
+        presence::poke(&app);
+    }
     apply_theme(&app, &settings.theme);
     let visible = app
         .get_webview_window("main")
@@ -253,6 +261,7 @@ fn save_identity(app: tauri::AppHandle, name: String) -> Result<(), String> {
         }
     })?;
     log::info("settings", "identity-changed", json!({}));
+    presence::poke(&app);
     notify(&app);
     Ok(())
 }
@@ -535,6 +544,7 @@ fn main() {
                 secrets: Mutex::new(data::read_secrets()),
                 hub: ntfy::Hub::default(),
                 pause: pause::Pause::default(),
+                presence: presence::Presence::default(),
             });
             instance::claim();
             if let Some(exe) = &replaced {
@@ -554,6 +564,7 @@ fn main() {
             pause::init(&handle);
             cli::serve(&handle);
             ntfy::start(handle.clone());
+            presence::start(handle.clone());
             #[cfg(debug_assertions)]
             debug::start(&handle);
             if let Some(w) = app.get_webview_window("main") {
@@ -586,6 +597,7 @@ fn main() {
         }
         RunEvent::Reopen { .. } => show(app),
         RunEvent::Exit => {
+            presence::bye(app);
             cli::stop();
             log::info("main", "exit", json!({}));
         }

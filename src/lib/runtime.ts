@@ -7,7 +7,8 @@ import type { Template } from './bindings/Template'
 import type { Message } from './bindings/Message'
 import type { Connection } from './bindings/Connection'
 import type { Identity } from './bindings/Identity'
-export type { Snapshot, Settings, Template, Message, Connection, Identity }
+import type { Peer } from './bindings/Peer'
+export type { Snapshot, Settings, Template, Message, Connection, Identity, Peer }
 
 export const desktop = isTauri()
 // 浏览器 DEV 走模拟运行时，正式构建的浏览器页面只读
@@ -33,27 +34,51 @@ export type InjectMessage = {
   senderId?: string
 }
 
+/** DEV：调试页里的 Mock 模式开关，存在 localStorage（只对这个窗口，不进 data.json），打开后各页面右下角出现本页的状态浮窗 */
+export const MOCK_BAR_KEY = 'fox-nudge:mock'
+
+// DEV：Mock 浮窗选了某个状态后，命令和事件改走内存里的模拟运行时（从当前真实快照复制一份再改），
+// 不碰真实数据和服务器；选「原样」切回真实数据。浏览器 DEV 一直走模拟运行时
+// 开关和模拟运行时挂在 window 上整页共用，热更新多出一份本模块时，界面听的和浮窗改的仍是同一份（FoxSync 踩过）
+type DevShared = {
+  overlay: boolean
+  preview?: Promise<import('../debug/web/runtime').WebRuntime>
+}
+const dev = globalThis as { __foxNudgeDev?: DevShared }
+const shared: DevShared = import.meta.env.DEV ? (dev.__foxNudgeDev ??= { overlay: false }) : { overlay: false }
+const mocked = () => webPreview || shared.overlay
+export const mockActive = () => import.meta.env.DEV && shared.overlay
+
+// 通知头像、前端日志是给真实应用的，模拟时也照常走桌面端
+const REAL_ONLY = new Set(['avatar_ready', 'log_client'])
+// 模拟时只拦下这些状态事件；菜单栏跳页、聚焦输入框、头像请求照常从桌面端来
+const STATE_EVENTS = new Set(['snapshot', 'connection', 'message', 'echo'])
+
 // DEV 动态入口在生产构建中整体剔除
-let previewRuntime: Promise<import('../debug/web/runtime').WebRuntime> | undefined
 async function preview() {
-  if (import.meta.env.DEV && !desktop) {
-    return (previewRuntime ??= import('../debug/web/runtime').then(
-      (module) => new module.WebRuntime(initial),
-    ))
+  if (import.meta.env.DEV) {
+    return (shared.preview ??= import('../debug/web/runtime').then((module) => new module.WebRuntime(initial)))
   }
   throw new Error('此功能需要桌面端')
 }
 
 async function call<T = void>(command: string, args: Record<string, unknown> = {}): Promise<T> {
-  if (desktop) return invoke<T>(command, args)
+  if (desktop && (!mocked() || REAL_ONLY.has(command))) return invoke<T>(command, args)
   if (import.meta.env.DEV) return (await preview()).command(command, args) as Promise<T>
   throw new Error('此功能需要桌面端')
 }
 
 async function on<T>(name: string, callback: (value: T) => void): Promise<() => void> {
-  if (desktop) return listen<T>(name, (event) => callback(event.payload))
-  if (import.meta.env.DEV) return (await preview()).on(name, (value) => callback(value as T))
-  return () => {}
+  if (!import.meta.env.DEV) return desktop ? listen<T>(name, (event) => callback(event.payload)) : () => {}
+  if (!desktop) return (await preview()).on(name, (value) => callback(value as T))
+  const gated = STATE_EVENTS.has(name)
+  if (!gated) return listen<T>(name, (event) => callback(event.payload))
+  // 开发版两边都听，按当前是否在 Mock 里只放行一边
+  const stops = [
+    (await preview()).on(name, (value) => mocked() && callback(value as T)),
+    await listen<T>(name, (event) => !mocked() && callback(event.payload)),
+  ]
+  return () => stops.forEach((stop) => stop())
 }
 
 export const api = {
@@ -95,6 +120,22 @@ export const api = {
     import.meta.env.DEV ? call('debug_disconnect') : Promise.reject(new Error('仅开发版可用')),
   debugClearMock: () =>
     import.meta.env.DEV ? call<number>('debug_clear_mock') : Promise.reject(new Error('仅开发版可用')),
+  /** DEV：把某个页面切到某个模拟状态；第一次切时先把当前真实快照复制进模拟运行时 */
+  debugMock: async (target: string, state: string) => {
+    if (!import.meta.env.DEV) throw new Error('仅开发版可用')
+    const rt = await preview()
+    if (!shared.overlay) {
+      if (desktop) rt.seed(await invoke<Snapshot>('get_snapshot'))
+      shared.overlay = true
+    }
+    await rt.command('debug_mock', { target, state })
+  },
+  /** DEV：回到原本的界面：桌面切回真实数据，浏览器回到切状态之前 */
+  debugRestore: async () => {
+    if (!import.meta.env.DEV) throw new Error('仅开发版可用')
+    shared.overlay = false
+    if (webPreview) await (await preview()).command('debug_reset')
+  },
 }
 
 export const events = {
@@ -107,4 +148,13 @@ export const events = {
   error: (cb: (text: string) => void) => on('error', cb),
   // Rust 弹通知前请前端把发送者头像画成 PNG
   avatarRequest: (cb: (request: AvatarRequest) => void) => on('avatar-request', cb),
+}
+
+// DEV：运行时模块（含模拟运行时）热更新时整页刷新，只替换模块会留下两份实例，切状态看不到变化（FoxSync 踩过）
+if (import.meta.hot) {
+  import.meta.hot.accept()
+  import.meta.hot.on('vite:beforeUpdate', ({ updates }) => {
+    const touched = updates.some((u) => /\/src\/(lib|debug\/web)\/runtime\.ts/.test(`${u.path} ${u.acceptedPath}`))
+    if (touched) location.reload()
+  })
 }

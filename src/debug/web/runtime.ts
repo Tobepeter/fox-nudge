@@ -5,6 +5,7 @@ import type { Settings } from '../../lib/bindings/Settings'
 import type { Template } from '../../lib/bindings/Template'
 import type { Message } from '../../lib/bindings/Message'
 import type { Connection } from '../../lib/bindings/Connection'
+import type { Peer } from '../../lib/bindings/Peer'
 import { ANONYMOUS, cleanName } from '../../lib/avatar-text.ts'
 import { AVATAR_STYLES, HUMAN_STYLES } from '../../lib/avatar-styles.ts'
 
@@ -38,6 +39,48 @@ function defaultTemplates(): Template[] {
   return ['ding', 'hi', '叮', '来一下', '吃饭啦', '收到'].map((text) => ({ id: randomId(16), text }))
 }
 
+/** Mock 浮窗里每个页面能切的状态，空串（原样）由浮窗自己加 */
+export const MOCK_STATES: Record<string, { id: string; label: string }[]> = {
+  send: [
+    { id: 'connecting', label: '连接中' },
+    { id: 'waiting', label: '断线' },
+    { id: 'unconfigured', label: '未配置' },
+    { id: 'paused', label: '暂停中' },
+    { id: 'no-templates', label: '没有文案' },
+    { id: 'no-recent', label: '没发过' },
+    { id: 'many', label: '很多' },
+  ],
+  history: [
+    { id: 'empty', label: '空' },
+    { id: 'many', label: '很多' },
+    { id: 'undecryptable', label: '有解不开的' },
+  ],
+  peers: [
+    { id: 'alone', label: '只有本机' },
+    { id: 'some', label: '几台在线' },
+    { id: 'paused', label: '有人暂停' },
+    { id: 'offline', label: '都离线' },
+    { id: 'me-offline', label: '本机断线' },
+    { id: 'crowd', label: '很多设备' },
+  ],
+  settings: [
+    { id: 'no-secrets', label: '没有令牌和密钥' },
+    { id: 'custom', label: '全部自定义' },
+    { id: 'unconfigured', label: '未配置' },
+  ],
+}
+
+const NAMES = ['小明', '阿狸', 'eating', 'm5', '一个名字特别特别长的同事', 'Lucy', '老王', 'k', '小红', 'design-mac', '测试机', '大白']
+const peer = (name: string, extra: Partial<Peer> = {}): Peer => ({
+  id: `debug-${name}`,
+  name,
+  avatar: '',
+  online: true,
+  paused: false,
+  lastSeen: Math.floor(Date.now() / 1000),
+  ...extra,
+})
+
 export type WebRuntimeOptions = { connectMs?: number; retryMs?: number }
 
 export class WebRuntime {
@@ -50,6 +93,8 @@ export class WebRuntime {
   #initial: Snapshot
   #connectMs: number
   #retryMs: number
+  /** Mock 切状态前的样子：桌面端是复制进来的真实快照，浏览器里是第一次切之前的状态 */
+  #original?: Snapshot
 
   constructor(initial: Snapshot, options: WebRuntimeOptions = {}) {
     this.#initial = initial
@@ -78,6 +123,140 @@ export class WebRuntime {
       version: `${base.version || '0.1.0'}-web`,
       dev: true,
     }
+  }
+
+  /** 把真实快照复制进来，之后的模拟都在复制品上改；停掉自己模拟的连接，免得盖掉复制进来的状态 */
+  seed(snapshot: Snapshot) {
+    for (const timer of this.#timers) clearTimeout(timer)
+    this.#timers.clear()
+    this.#original = structuredClone(snapshot)
+    this.#restore()
+  }
+
+  #restore() {
+    if (this.#original) this.state = structuredClone(this.#original)
+    this.#changed()
+    this.#emit('connection', this.state.connection)
+  }
+
+  /** 某个页面切到某个状态：先回到切之前的样子，再改出这个状态 */
+  #mock(target: string, state: string) {
+    this.#original ??= structuredClone(this.state)
+    this.state = structuredClone(this.#original)
+    const s = this.state
+    const now = Math.floor(Date.now() / 1000)
+    const connection = (next: Partial<Connection>) => (s.connection = { ...s.connection, ...next })
+    const offline = () =>
+      connection({ state: 'waiting', connectedAt: null, attempts: 3, error: '连不上服务器', retryAt: Date.now() + 30_000 })
+    const unconfigured = () => {
+      connection({ state: 'unconfigured', connectedAt: null, error: '', retryAt: null })
+      s.settings = { ...s.settings, server: '', topic: '' }
+      s.serverSource = 'none'
+      s.topicSource = 'none'
+    }
+    const message = (i: number, extra: Partial<Message>): Message => ({
+      id: `debug-mock-${i}`,
+      time: now - i * 3600 * 5,
+      title: '',
+      body: '',
+      senderId: null,
+      senderName: null,
+      senderAvatar: null,
+      mine: false,
+      encrypted: true,
+      status: 'ok',
+      toSelf: false,
+      ...extra,
+    })
+    const mine = (i: number, body: string) =>
+      message(i, { body, mine: true, senderId: s.identity.id, senderName: s.identity.name, senderAvatar: s.settings.avatarStyle })
+    const from = (i: number, name: string, body: string) => message(i, { body, senderId: `debug-${name}`, senderName: name })
+    switch (`${target}:${state}`) {
+      case 'send:connecting':
+        connection({ state: 'connecting', connectedAt: null, error: '', retryAt: null })
+        break
+      case 'send:waiting':
+        offline()
+        break
+      case 'send:unconfigured':
+      case 'settings:unconfigured':
+        unconfigured()
+        break
+      case 'send:paused':
+        s.pausedUntil = now + 3600
+        break
+      case 'send:no-templates':
+        s.templates = []
+        break
+      case 'send:no-recent':
+        s.messages = s.messages.filter((m) => !m.mine)
+        break
+      case 'send:many':
+        s.templates = ['ding', 'hi', '叮', '来一下', '吃饭啦', '收到', '下楼拿外卖', '我先走了，明天见', '会议室见，带上电脑和充电器', '好'].map(
+          (text, i) => ({ id: `debug-${i}`, text }),
+        )
+        s.recentClearedAt = 0
+        s.recentHidden = {}
+        s.messages = ['等我五分钟', '已经发你了，看一下', '这一条特别长，用来看最近发过里文字太长时怎么截断，后面还有很多很多字', '在吗', '好的', '晚点再说', '收到', '到了']
+          .map((body, i) => mine(i + 1, body))
+          .reverse()
+        break
+      case 'history:empty':
+        s.messages = []
+        break
+      case 'history:many':
+        s.messages = Array.from({ length: 40 }, (_, i) =>
+          i % 3 === 0
+            ? mine(i, i % 2 ? '来一下' : '这一条特别长，用来看历史里文字太长时怎么截断，后面还有很多很多很多很多字')
+            : i % 7 === 0
+              ? message(i, { body: 'Agent 跑完了', mine: true, toSelf: true, senderId: s.identity.id, senderName: s.identity.name })
+              : from(i, NAMES[i % 5], ['在吗', '吃饭啦', '收到', '下楼拿外卖'][i % 4]),
+        ).reverse()
+        break
+      case 'history:undecryptable':
+        s.messages = [
+          ...s.messages,
+          message(2, { status: 'undecryptable' }),
+          message(1, { status: 'undecryptable' }),
+          message(0, { body: 'curl 发的明文', encrypted: false }),
+        ].sort((a, b) => a.time - b.time)
+        break
+      case 'peers:alone':
+        s.peers = []
+        break
+      case 'peers:some':
+        s.peers = [peer('小明'), peer('eating'), peer('m5', { online: false, lastSeen: now - 25 * 60 })]
+        break
+      case 'peers:paused':
+        s.pausedUntil = now + 3600
+        s.peers = [peer('小明', { paused: true }), peer('eating')]
+        break
+      case 'peers:offline':
+        s.peers = [peer('eating', { online: false, lastSeen: now - 3 * 60 }), peer('m5', { online: false, lastSeen: now - 5 * 3600 }), peer('小明', { online: false, lastSeen: now - 2 * 86400 })]
+        break
+      case 'peers:me-offline':
+        offline()
+        s.peers = [peer('eating', { online: false, lastSeen: now - 4 * 60 })]
+        break
+      case 'peers:crowd':
+        s.peers = NAMES.map((name, i) => peer(name, i % 4 === 3 ? { online: false, lastSeen: now - i * 600 } : { paused: i % 5 === 1 })).sort(
+          (a, b) => Number(b.online) - Number(a.online),
+        )
+        break
+      case 'settings:no-secrets':
+        s.tokenSource = 'none'
+        s.keySource = 'none'
+        break
+      case 'settings:custom':
+        s.settings = { ...s.settings, server: 'https://ntfy.example.com', topic: 'notify-home' }
+        s.serverSource = 'custom'
+        s.topicSource = 'custom'
+        s.tokenSource = 'custom'
+        s.keySource = 'custom'
+        break
+    }
+    this.#changed()
+    this.#emit('connection', s.connection)
   }
 
   on(name: string, listener: Listener) {
@@ -324,6 +503,13 @@ export class WebRuntime {
         this.#changed()
         return before - this.state.messages.length
       }
+      case 'debug_mock':
+        this.#mock(String(args.target ?? ''), String(args.state ?? ''))
+        return
+      case 'debug_reset':
+        this.#restore()
+        this.#original = undefined
+        return
       case 'clear_history':
         this.state.messages = []
         this.#changed()

@@ -5,6 +5,7 @@ import {
   History as HistoryIcon,
   Send,
   Settings as SettingsIcon,
+  Users,
 } from 'lucide-react'
 import { Toaster } from './components/ui/sonner'
 import { Button } from './components/ui/button'
@@ -13,6 +14,7 @@ import { History } from './components/history'
 import { renderAvatarPng } from './components/avatar'
 import { NotifyGuide } from './components/notify-guide'
 import { PauseControl } from './components/pause-control'
+import { Peers } from './components/peers'
 import { Settings } from './components/settings'
 import { initial } from './lib/initial'
 import {
@@ -20,6 +22,7 @@ import {
   available,
   desktop,
   events,
+  MOCK_BAR_KEY,
   webPreview,
   type NotificationStatus,
   type Settings as SettingsData,
@@ -30,20 +33,24 @@ const DebugPage = import.meta.env.DEV
       import('./debug/debug-page').then((m) => ({ default: m.DebugPage })),
     )
   : null
+const MockBar = import.meta.env.DEV
+  ? lazy(() => import('./debug/mock-bar').then((m) => ({ default: m.MockBar })))
+  : null
+// 有 Mock 状态可切的页面
+const MOCK_PAGES = ['send', 'history', 'peers', 'settings']
+
+function readMockBar() {
+  try {
+    return import.meta.env.DEV && localStorage.getItem(MOCK_BAR_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 const pages = [
   { id: 'send', title: '发送', icon: Send },
   { id: 'history', title: '历史', icon: HistoryIcon },
-  ...(DebugPage
-    ? [
-        {
-          id: 'debug',
-          title: '调试',
-          icon: Bug,
-          className: 'text-amber-600 dark:text-amber-400',
-        },
-      ]
-    : []),
+  { id: 'peers', title: '在线', icon: Users },
 ]
 
 /** DEBUG：调试页打开引导弹窗的参数 */
@@ -67,6 +74,15 @@ export function App() {
   const guided = useRef(false)
   // DEBUG：调试页模拟的通知权限，只给这次弹窗用，不改真实的权限状态
   const [fakeStatus, setFakeStatus] = useState<NotificationStatus>()
+  // DEV：调试页里的 Mock 模式开关，打开后各页面右下角出现本页的状态浮窗
+  const [mockBar, setMockBarState] = useState(readMockBar)
+  const setMockBar = (on: boolean) => {
+    setMockBarState(on)
+    try {
+      if (on) localStorage.setItem(MOCK_BAR_KEY, '1')
+      else localStorage.removeItem(MOCK_BAR_KEY)
+    } catch {}
+  }
   const running = useRef(false)
   const input = useRef<HTMLTextAreaElement>(null)
 
@@ -257,6 +273,11 @@ export function App() {
 
   return (
     <div className='flex h-screen overflow-hidden'>
+      {MockBar && mockBar && MOCK_PAGES.includes(page) && (
+        <Suspense fallback={null}>
+          <MockBar target={page} restored={refresh} />
+        </Suspense>
+      )}
       <Toaster
         position='top-right'
         theme={
@@ -291,7 +312,7 @@ export function App() {
           {pages.map((item) => (
             <Button
               key={item.id}
-              className={`w-full justify-start ${'className' in item ? item.className : ''}`}
+              className='w-full justify-start'
               variant={page === item.id ? 'secondary' : 'ghost'}
               onClick={() => setPage(item.id)}
             >
@@ -305,6 +326,16 @@ export function App() {
             <span className='block px-2 text-amber-600 dark:text-amber-400'>
               {webPreview ? 'Web 模拟' : '浏览器只读预览'}
             </span>
+          )}
+          {DebugPage && (
+            <Button
+              className='w-full justify-start text-amber-600 dark:text-amber-400'
+              variant={page === 'debug' ? 'secondary' : 'ghost'}
+              onClick={() => setPage('debug')}
+            >
+              <Bug />
+              调试
+            </Button>
           )}
           <Button
             className='w-full justify-start'
@@ -360,6 +391,15 @@ export function App() {
               disabled={!available || working}
             />
           )}
+          {page === 'peers' && (
+            <Peers
+              peers={snapshot.peers}
+              identity={snapshot.identity}
+              avatarStyle={snapshot.settings.avatarStyle}
+              paused={snapshot.pausedUntil > 0}
+              connected={snapshot.connection.state === 'connected'}
+            />
+          )}
           {page === 'settings' && (
             <Settings
               snapshot={snapshot}
@@ -372,7 +412,11 @@ export function App() {
           )}
           {page === 'debug' && DebugPage && (
             <Suspense fallback={null}>
-              <DebugPage snapshot={snapshot} />
+              <DebugPage
+                snapshot={snapshot}
+                mockBar={mockBar}
+                setMockBar={setMockBar}
+              />
             </Suspense>
           )}
         </main>

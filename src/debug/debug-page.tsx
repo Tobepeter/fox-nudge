@@ -1,9 +1,11 @@
 // DEBUG：开发版调试页，只留常用的几项。模拟消息只写本机历史，「清除模拟消息」可随时还原
-// 一次性看效果用的 mock 不放这里，临时写死在代码里，看完就删
+// 页面的各种状态用 Mock 模式的浮窗切；一次性看效果用的 mock 不放这里，临时写死在代码里，看完就删
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
+import { Switch } from '../components/ui/switch'
+import { HelpTip } from '../components/help-tip'
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
 import { api, type InjectMessage, type Snapshot } from '../lib/runtime'
 import type { DebugGuide } from '../app'
@@ -41,7 +43,10 @@ const guideStatuses: [GuideStatus, string][] = [
   ['authorized', '已允许'],
 ]
 
-function MockTab() {
+function MockTab(props: {
+  mockBar: boolean
+  setMockBar: (on: boolean) => void
+}) {
   // 引导弹窗用的模拟通知权限：dev 查不了真实权限（总是 unsupported），选一个看对应的样子
   const [status, setStatus] = useState<GuideStatus>('notDetermined')
   const showGuide = (mode: DebugGuide['mode']) =>
@@ -64,6 +69,15 @@ function MockTab() {
     )
   return (
     <div className='space-y-5'>
+      <label className='flex max-w-md items-center justify-between rounded-lg border bg-card px-3 py-2.5'>
+        <span className='flex items-center gap-0.5'>
+          Mock 模式
+          <HelpTip label='Mock 模式'>
+            发送、历史、在线、设置页右下角出现状态浮窗，切到某个状态看界面，选「原样」或换页面就回到真实数据；不碰真实数据和服务器
+          </HelpTip>
+        </span>
+        <Switch checked={props.mockBar} onCheckedChange={props.setMockBar} />
+      </label>
       <Group title='收到一条消息'>
         <div className='flex max-w-md gap-2'>
           <Input
@@ -177,7 +191,11 @@ function StateTab({ snapshot }: { snapshot: Snapshot }) {
   )
 }
 
-export function DebugPage(props: { snapshot: Snapshot }) {
+export function DebugPage(props: {
+  snapshot: Snapshot
+  mockBar: boolean
+  setMockBar: (on: boolean) => void
+}) {
   const [tab, setTab] = useState('mock')
   const { snapshot } = props
   return (
@@ -200,7 +218,9 @@ export function DebugPage(props: { snapshot: Snapshot }) {
         </ToggleGroup>
       </div>
       <div className='app-scroll -mx-4 min-h-0 flex-1 overflow-y-auto px-4'>
-        {tab === 'mock' ? <MockTab /> : <StateTab snapshot={snapshot} />}
+        {tab === 'mock' ? (
+          <MockTab mockBar={props.mockBar} setMockBar={props.setMockBar} />
+        ) : <StateTab snapshot={snapshot} />}
       </div>
     </section>
   )

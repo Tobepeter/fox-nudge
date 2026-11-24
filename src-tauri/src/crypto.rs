@@ -42,6 +42,11 @@ fn cipher(secret: &str) -> XChaCha20Poly1305 {
 }
 
 pub fn seal(secret: &str, payload: &Payload) -> Result<String, String> {
+    seal_any(secret, payload)
+}
+
+/// 任意可序列化内容都按同一格式加密，在线心跳也用它
+pub fn seal_any(secret: &str, payload: &impl Serialize) -> Result<String, String> {
     let plain = serde_json::to_vec(payload).map_err(|e| e.to_string())?;
     let mut nonce = [0u8; 24];
     rand::thread_rng().fill_bytes(&mut nonce);
@@ -54,6 +59,10 @@ pub fn seal(secret: &str, payload: &Payload) -> Result<String, String> {
 }
 
 pub fn open(secret: &str, text: &str) -> Option<Payload> {
+    open_any(secret, text)
+}
+
+pub fn open_any<T: serde::de::DeserializeOwned>(secret: &str, text: &str) -> Option<T> {
     let raw = B64.decode(text.strip_prefix(PREFIX)?.trim()).ok()?;
     if raw.len() < 24 + 16 {
         return None;

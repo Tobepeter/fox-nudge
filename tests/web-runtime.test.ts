@@ -33,6 +33,7 @@ const initial: Snapshot = {
   pausedUntil: 0,
   welcomed: true,
   recentHidden: {},
+  peers: [],
   version: '0.1.0',
   dev: false,
 }
@@ -181,4 +182,27 @@ test('发送节流：连发 3 条不限，之后冷却，最长 30 秒', async (
   for (let i = 0; i < 4; i++) await rt.command('send', { body: `m${i}` })
   await assert.rejects(rt.command('send', { body: 'too fast' }), /太快/)
   rt.dispose()
+})
+
+test('Mock：切状态在复制品上改，还原回到切之前', async () => {
+  const rt = new WebRuntime(initial, { connectMs: 5 })
+  await wait(20)
+  const before = await snapshot(rt)
+  await rt.command('debug_mock', { target: 'peers', state: 'some' })
+  assert.equal((await snapshot(rt)).peers.length, 3)
+  await rt.command('debug_mock', { target: 'send', state: 'waiting' })
+  let s = await snapshot(rt)
+  assert.equal(s.peers.length, 0, '换状态先回到原样')
+  assert.equal(s.connection.state, 'waiting')
+  await rt.command('debug_reset')
+  s = await snapshot(rt)
+  assert.equal(s.connection.state, 'connected')
+  assert.equal(s.identity.id, before.identity.id)
+  // 桌面端复制进来的快照不被模拟连接盖掉
+  const seeded = new WebRuntime(initial, { connectMs: 5 })
+  seeded.seed({ ...before, connection: { ...before.connection, state: 'waiting' } })
+  await wait(20)
+  assert.equal((await snapshot(seeded)).connection.state, 'waiting')
+  rt.dispose()
+  seeded.dispose()
 })

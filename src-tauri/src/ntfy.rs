@@ -64,13 +64,20 @@ impl Hub {
         log::info("ntfy", "restart", json!({ "reason": reason }));
         self.restart.send_modify(|g| *g += 1);
     }
+    /// 在线状态的订阅跟着消息订阅一起重连
+    pub fn restarts(&self) -> watch::Receiver<u64> {
+        self.restart.subscribe()
+    }
+    pub fn client(&self) -> &reqwest::Client {
+        &self.client
+    }
 }
 
-#[derive(Clone)]
-struct Config {
-    server: String,
-    topic: String,
-    token: String,
+#[derive(Clone, PartialEq)]
+pub struct Config {
+    pub server: String,
+    pub topic: String,
+    pub token: String,
     mode: String,
     poll_seconds: u32,
 }
@@ -96,7 +103,7 @@ pub fn active_token(app: &AppHandle) -> String {
     builtin_token().unwrap_or_default().to_string()
 }
 
-fn config(app: &AppHandle) -> Option<Config> {
+pub fn config(app: &AppHandle) -> Option<Config> {
     let token = active_token(app);
     let state = app.state::<AppState>();
     let data = state.data.lock().unwrap();
@@ -146,7 +153,7 @@ impl Failure {
     }
 }
 
-fn backoff(attempts: u32, auth: bool) -> Duration {
+pub fn backoff(attempts: u32, auth: bool) -> Duration {
     if auth {
         // 令牌错了重试也没用，放慢，等用户改设置
         return Duration::from_secs(300);
