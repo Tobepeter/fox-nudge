@@ -305,6 +305,15 @@ export class WebRuntime {
         this.state.pausedUntil = 0
         this.#changed()
         return
+      case 'set_recent_hidden': {
+        const text = String(args.text).trim()
+        const hidden = { ...this.state.recentHidden }
+        if (Number(args.at) > 0) hidden[text] = Number(args.at)
+        else delete hidden[text]
+        this.state.recentHidden = hidden
+        this.#changed()
+        return
+      }
       case 'set_recent_cleared':
         this.state.recentClearedAt = Number(args.at)
         this.#changed()

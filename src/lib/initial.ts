@@ -37,6 +37,7 @@ export const initial: Snapshot = {
   recentClearedAt: 0,
   pausedUntil: 0,
   welcomed: true,
+  recentHidden: {},
   version: '',
   dev: false,
 }

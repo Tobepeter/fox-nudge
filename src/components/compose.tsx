@@ -16,6 +16,7 @@ import {
   RotateCcw,
   SendHorizontal,
   Trash2,
+  X,
 } from 'lucide-react'
 import {
   closestCenter,
@@ -234,6 +235,7 @@ export function Compose(props: {
   saveTemplates: (templates: Template[]) => Promise<boolean>
   resetTemplates: () => Promise<boolean>
   setRecentCleared: (at: number) => Promise<boolean>
+  setRecentHidden: (text: string, at: number) => Promise<boolean>
   editing: boolean
   setEditing: (value: boolean) => void
   reconnect: () => void
@@ -350,6 +352,17 @@ export function Compose(props: {
       undo: () => save(before),
     })
   }
+  // 单独删掉一条：只从这里隐藏，不删历史；之后再发同样内容会重新出现
+  function hideRecent(text: string) {
+    const previous = snapshot.recentHidden[text] ?? 0
+    void props.setRecentHidden(text, Math.floor(Date.now() / 1000))
+    setUndo({
+      key: `recent-${Date.now()}`,
+      label: `已删除「${short(text)}」`,
+      expiresAt: Date.now() + UNDO_MS,
+      undo: () => void props.setRecentHidden(text, previous),
+    })
+  }
   function clearRecent() {
     const previous = snapshot.recentClearedAt
     void props.setRecentCleared(Math.floor(Date.now() / 1000))
@@ -461,7 +474,7 @@ export function Compose(props: {
               </Line>
             )}
           </Card>
-          {/* 最近发过：自己发过的消息，单击重发，图钉固定为文案；清空只隐藏，不删历史，5 秒内可撤销 */}
+          {/* 最近发过：自己发过的消息，单击重发，图钉固定为文案；悬停一行右侧出现删除，标题栏清空全部；都只隐藏、不删历史，5 秒内可撤销 */}
           <Card
             title='最近发过'
             action={
@@ -490,9 +503,25 @@ export function Compose(props: {
                   const id = `recent:${text}`
                   const status = feedback?.id === id ? feedback.state : null
                   return (
-                    <li key={id}>
+                    <li key={id} className='group/recent'>
                       <Line
-                        side={<SendStatus status={status} />}
+                        side={
+                          status ? (
+                            <SendStatus status={status} />
+                          ) : (
+                            <Tip content='删除'>
+                              <Button
+                                variant='ghost'
+                                size='icon-sm'
+                                aria-label='删除'
+                                className='text-muted-foreground opacity-0 group-hover/recent:opacity-100 hover:text-destructive focus-visible:opacity-100'
+                                onClick={() => hideRecent(text)}
+                              >
+                                <X />
+                              </Button>
+                            </Tip>
+                          )
+                        }
                         handle={
                           <Tip content='固定为文案'>
                             <button

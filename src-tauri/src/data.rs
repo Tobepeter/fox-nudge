@@ -1,6 +1,6 @@
 //! 业务数据与凭据：data.json 给界面用，secrets.json 只在 Rust 侧读写，不发给前端
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf, sync::OnceLock};
+use std::{collections::BTreeMap, fs, path::PathBuf, sync::OnceLock};
 
 pub const HISTORY_LIMIT: usize = 300;
 /// 历史最多保留的天数，超过的自动清掉
@@ -221,6 +221,8 @@ pub struct Data {
     pub last_id: Option<String>,
     /// 「最近发过」只显示这个时间（秒）之后发的；清空最近只改它，不删历史
     pub recent_cleared_at: i64,
+    /// 「最近发过」里单独删掉的：内容 → 删除时间（秒），之后再发同样内容会重新出现；不删历史
+    pub recent_hidden: BTreeMap<String, i64>,
     /// 暂停提醒到这个时间（秒），0 表示没暂停
     pub paused_until: i64,
     /// 看过新手引导；旧数据没有这个字段，算已经看过，只有新装和清除数据后才弹
@@ -239,6 +241,7 @@ impl Default for Data {
             messages: vec![],
             last_id: None,
             recent_cleared_at: 0,
+            recent_hidden: BTreeMap::new(),
             paused_until: 0,
             welcomed: false,
         }
@@ -275,6 +278,11 @@ impl Data {
         self.messages.retain(|m| m.time >= oldest);
         let excess = self.messages.len().saturating_sub(HISTORY_LIMIT);
         self.messages.drain(..excess);
+        // 删除记录只挡住它之前发的消息，比最旧的历史还早就用不上了
+        match self.messages.iter().map(|m| m.time).min() {
+            Some(first) => self.recent_hidden.retain(|_, at| *at >= first),
+            None => self.recent_hidden.clear(),
+        }
     }
 }
 
@@ -467,6 +475,31 @@ mod tests {
     fn old_templates_still_load() {
         let t: Template = serde_json::from_str(r#"{"id":"1","title":"吃饭","body":"吃饭啦"}"#).unwrap();
         assert_eq!(t.text, "吃饭啦");
+    }
+    #[test]
+    fn prune_drops_stale_recent_hidden() {
+        let mut d = Data::default();
+        let msg = |time: i64| Message {
+            id: time.to_string(),
+            time,
+            title: String::new(),
+            body: "b".into(),
+            sender_id: None,
+            sender_name: None,
+            sender_avatar: None,
+            mine: true,
+            encrypted: false,
+            status: "ok".into(),
+            to_self: false,
+        };
+        d.messages = vec![msg(100), msg(200)];
+        d.recent_hidden.insert("old".into(), 50);
+        d.recent_hidden.insert("new".into(), 150);
+        d.prune(200);
+        assert_eq!(d.recent_hidden.keys().collect::<Vec<_>>(), ["new"]);
+        d.messages.clear();
+        d.prune(200);
+        assert!(d.recent_hidden.is_empty());
     }
     #[test]
     fn welcome_only_for_fresh_data() {

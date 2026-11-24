@@ -42,6 +42,7 @@ struct Snapshot {
     token_source: String,
     key_source: String,
     recent_cleared_at: i64,
+    recent_hidden: std::collections::BTreeMap<String, i64>,
     /// 暂停提醒截止时间（秒），0 表示没暂停
     paused_until: i64,
     /// 看过新手引导
@@ -94,6 +95,7 @@ fn snapshot(app: &tauri::AppHandle) -> Snapshot {
         }
         .into(),
         recent_cleared_at: data.recent_cleared_at,
+        recent_hidden: data.recent_hidden,
         paused_until: pause::until(app).unwrap_or(0),
         welcomed: data.welcomed,
         version: env!("CARGO_PKG_VERSION").into(),
@@ -342,6 +344,20 @@ fn set_recent_cleared(app: tauri::AppHandle, at: i64) -> Result<(), String> {
     Ok(())
 }
 
+/// 「最近发过」单独删掉一条：记下删除时间，at 为 0 时撤销
+#[tauri::command]
+fn set_recent_hidden(app: tauri::AppHandle, text: String, at: i64) -> Result<(), String> {
+    save(&app, |d| {
+        if at > 0 {
+            d.recent_hidden.insert(text.trim().to_string(), at);
+        } else {
+            d.recent_hidden.remove(text.trim());
+        }
+    })?;
+    notify(&app);
+    Ok(())
+}
+
 /// 暂停提醒，preset：30m、1h、morning；暂停中再调用就是改截止时间
 #[tauri::command]
 fn pause_alerts(app: tauri::AppHandle, preset: String) -> Result<i64, String> {
@@ -453,6 +469,7 @@ fn main() {
         reconnect,
         clear_history,
         set_recent_cleared,
+        set_recent_hidden,
         pause_alerts,
         resume_alerts,
         cli::cli_status,
@@ -488,6 +505,7 @@ fn main() {
         reconnect,
         clear_history,
         set_recent_cleared,
+        set_recent_hidden,
         pause_alerts,
         resume_alerts,
         cli::cli_status,

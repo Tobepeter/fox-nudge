@@ -71,6 +71,7 @@ export const api = {
   reconnect: () => call('reconnect'),
   clearHistory: () => call('clear_history'),
   setRecentCleared: (at: number) => call('set_recent_cleared', { at }),
+  setRecentHidden: (text: string, at: number) => call('set_recent_hidden', { text, at }),
   pauseAlerts: (preset: '30m' | '1h' | 'morning') => call<number>('pause_alerts', { preset }),
   resumeAlerts: () => call('resume_alerts'),
   cliStatus: () => call<CliStatus>('cli_status'),

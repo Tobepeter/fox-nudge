@@ -32,6 +32,7 @@ const initial: Snapshot = {
   recentClearedAt: 0,
   pausedUntil: 0,
   welcomed: true,
+  recentHidden: {},
   version: '0.1.0',
   dev: false,
 }

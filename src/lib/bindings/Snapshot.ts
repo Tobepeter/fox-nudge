@@ -13,7 +13,7 @@ defaultName: string, templates: Array<Template>, messages: Array<Message>, conne
 /**
  * 以下来源：custom 设置里填的；builtin 构建时内置；none 没有
  */
-serverSource: string, topicSource: string, tokenSource: string, keySource: string, recentClearedAt: number, 
+serverSource: string, topicSource: string, tokenSource: string, keySource: string, recentClearedAt: number, recentHidden: { [key in string]: number }, 
 /**
  * 暂停提醒截止时间（秒），0 表示没暂停
  */

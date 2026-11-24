@@ -341,6 +341,9 @@ export function App() {
               }
               resetTemplates={() => run(api.resetTemplates)}
               setRecentCleared={(at) => run(() => api.setRecentCleared(at))}
+              setRecentHidden={(text, at) =>
+                run(() => api.setRecentHidden(text, at))
+              }
               editing={editing}
               setEditing={setEditing}
               reconnect={() => void run(api.reconnect)}
