@@ -44,13 +44,15 @@ export function Peers(props: {
   avatarStyle: string
   paused: boolean
   connected: boolean
+  /** 心跳被服务器限流，别人看到的状态可能过时；只在这里显示，不弹通知 */
+  limited: boolean
 }) {
   return (
     <section className='flex min-h-0 flex-1 flex-col gap-3'>
       <div className='flex shrink-0 items-center gap-0.5'>
         <h2 className='font-medium'>在线</h2>
         <HelpTip label='在线状态说明'>
-          每台电脑大约每分钟报一次平安，两三分钟没消息就算离线；睡眠、断网都会显示离线。只在这次运行里记，不存盘
+          每台电脑大约每 10 分钟报一次平安，25 分钟没消息就算离线，所以睡眠、断网要过一阵才显示离线；正常退出会马上显示。只在这次运行里记，不存盘
         </HelpTip>
       </div>
       <div className='app-scroll -mx-4 min-h-0 flex-1 overflow-y-auto px-4 [scrollbar-gutter:stable]'>
@@ -63,7 +65,9 @@ export function Peers(props: {
             sub={
               !props.connected
                 ? '本机 · 没连上服务器'
-                : props.paused
+                : props.limited
+                  ? '本机 · 服务器限流，别人看到的状态可能过时'
+                  : props.paused
                   ? '本机 · 暂停提醒中'
                   : '本机'
             }

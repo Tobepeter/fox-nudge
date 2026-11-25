@@ -61,6 +61,7 @@ export const MOCK_STATES: Record<string, { id: string; label: string }[]> = {
     { id: 'paused', label: '有人暂停' },
     { id: 'offline', label: '都离线' },
     { id: 'me-offline', label: '本机断线' },
+    { id: 'limited', label: '被限流' },
     { id: 'crowd', label: '很多设备' },
   ],
   settings: [
@@ -225,18 +226,22 @@ export class WebRuntime {
         s.peers = []
         break
       case 'peers:some':
-        s.peers = [peer('小明'), peer('eating'), peer('m5', { online: false, lastSeen: now - 25 * 60 })]
+        s.peers = [peer('小明'), peer('eating'), peer('m5', { online: false, lastSeen: now - 40 * 60 })]
         break
       case 'peers:paused':
         s.pausedUntil = now + 3600
         s.peers = [peer('小明', { paused: true }), peer('eating')]
         break
       case 'peers:offline':
-        s.peers = [peer('eating', { online: false, lastSeen: now - 3 * 60 }), peer('m5', { online: false, lastSeen: now - 5 * 3600 }), peer('小明', { online: false, lastSeen: now - 2 * 86400 })]
+        s.peers = [peer('eating', { online: false, lastSeen: now - 30 * 60 }), peer('m5', { online: false, lastSeen: now - 5 * 3600 }), peer('小明', { online: false, lastSeen: now - 2 * 86400 })]
         break
       case 'peers:me-offline':
         offline()
-        s.peers = [peer('eating', { online: false, lastSeen: now - 4 * 60 })]
+        s.peers = [peer('eating', { online: false, lastSeen: now - 30 * 60 })]
+        break
+      case 'peers:limited':
+        s.presenceLimited = true
+        s.peers = [peer('eating')]
         break
       case 'peers:crowd':
         s.peers = NAMES.map((name, i) => peer(name, i % 4 === 3 ? { online: false, lastSeen: now - i * 600 } : { paused: i % 5 === 1 })).sort(

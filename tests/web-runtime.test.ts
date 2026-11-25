@@ -34,6 +34,7 @@ const initial: Snapshot = {
   welcomed: true,
   recentHidden: {},
   peers: [],
+  presenceLimited: false,
   version: '0.1.0',
   dev: false,
 }

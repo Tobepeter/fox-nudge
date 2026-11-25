@@ -398,6 +398,7 @@ export function App() {
               avatarStyle={snapshot.settings.avatarStyle}
               paused={snapshot.pausedUntil > 0}
               connected={snapshot.connection.state === 'connected'}
+              limited={snapshot.presenceLimited}
             />
           )}
           {page === 'settings' && (

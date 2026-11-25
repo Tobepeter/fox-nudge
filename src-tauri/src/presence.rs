@@ -1,5 +1,6 @@
 //! 在线状态：在消息主题旁边另开 {主题}-presence，发不进缓存的心跳（Cache: no），服务器不存，只转给此刻在订阅的人
-//! 连上先说 hello，别人收到回 here，一打开就有名单；之后每分钟 beat，暂停、改昵称头像时立刻补一次；正常退出说 bye
+//! 连上先说 hello，别人收到回 here，一打开就有名单；之后每 10 分钟 beat，暂停、改昵称头像时立刻补一次；正常退出说 bye
+//! 心跳和消息共用服务器按 IP 算的每日额度，所以心跳不能密；被限流（429）就指数退避，发成功再回到正常间隔
 //! 超过 OFFLINE_SECONDS 没听到就算离线（睡眠、断网、被强制结束都是这样）
 //! 内容和消息一样用共享密钥加密，没有密钥时明文；旧版本不订阅这个主题，不受影响
 use crate::{
@@ -9,14 +10,24 @@ use crate::{
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, sync::Mutex, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+    time::Duration,
+};
 use tauri::{AppHandle, Manager};
 use tokio::{sync::Notify, time::Instant};
 
-const BEAT: Duration = Duration::from_secs(60);
+/// 三台电脑一天约 430 条心跳，服务器每个 IP 每天 5000 条，留足给消息
+const BEAT: Duration = Duration::from_secs(10 * 60);
+/// 被限流后心跳间隔翻倍，最长等这么久
+const BACKOFF_MAX: Duration = Duration::from_secs(60 * 60);
 /// 大约两次半心跳没听到就算离线
-const OFFLINE_SECONDS: i64 = 150;
-/// ntfy 45 秒一次保活，加上自己的心跳回声，超过这个时间没有数据就当作断线
+const OFFLINE_SECONDS: i64 = 25 * 60;
+/// ntfy 45 秒一次保活，超过这个时间没有数据就当作断线
 const STALL: Duration = Duration::from_secs(110);
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -47,6 +58,8 @@ struct Beat {
 pub struct Presence {
     peers: Mutex<BTreeMap<String, Peer>>,
     poke: Notify,
+    /// 心跳正被服务器限流：不弹通知，只在在线页本机那行安静地显示
+    limited: AtomicBool,
 }
 
 fn now() -> i64 {
@@ -62,6 +75,16 @@ pub fn peers(app: &AppHandle) -> Vec<Peer> {
     let mut list: Vec<Peer> = app.state::<AppState>().presence.peers.lock().unwrap().values().cloned().collect();
     list.sort_by(|a, b| b.online.cmp(&a.online).then(b.last_seen.cmp(&a.last_seen)).then(a.name.cmp(&b.name)));
     list
+}
+
+pub fn limited(app: &AppHandle) -> bool {
+    app.state::<AppState>().presence.limited.load(Ordering::Relaxed)
+}
+
+fn set_limited(app: &AppHandle, value: bool) {
+    if app.state::<AppState>().presence.limited.swap(value, Ordering::Relaxed) != value {
+        crate::notify(app);
+    }
 }
 
 pub fn start(app: AppHandle) {
@@ -136,6 +159,7 @@ async fn worker(app: AppHandle) {
         let place = cfg.as_ref().map(|c| (c.server.clone(), c.topic.clone()));
         if place != current {
             clear(&app);
+            set_limited(&app, false);
             current = place;
         }
         let Some(cfg) = cfg else {
@@ -177,7 +201,8 @@ async fn run(app: &AppHandle, cfg: &ntfy::Config, attempts: &mut u32) -> String 
     send(app, cfg, "hello").await;
     let mut stream = response.bytes_stream();
     let mut buffer: Vec<u8> = vec![];
-    let mut beat = tokio::time::interval_at(Instant::now() + BEAT, BEAT);
+    let mut limited: u32 = 0;
+    let mut next_beat = Instant::now() + BEAT;
     let mut deadline = Instant::now() + STALL;
     loop {
         tokio::select! {
@@ -206,8 +231,14 @@ async fn run(app: &AppHandle, cfg: &ntfy::Config, attempts: &mut u32) -> String 
                 }
             }
             _ = tokio::time::sleep_until(deadline) => return "长时间没有心跳".into(),
-            _ = beat.tick() => send(app, cfg, "beat").await,
-            _ = state.presence.poke.notified() => send(app, cfg, "beat").await,
+            _ = tokio::time::sleep_until(next_beat) => {
+                next_beat = Instant::now() + next_delay(send(app, cfg, "beat").await, &mut limited);
+                set_limited(app, limited > 0);
+            }
+            _ = state.presence.poke.notified() => {
+                next_beat = Instant::now() + next_delay(send(app, cfg, "beat").await, &mut limited);
+                set_limited(app, limited > 0);
+            }
         }
     }
 }
@@ -237,6 +268,16 @@ fn hear(app: &AppHandle, text: &str) -> Option<String> {
     Some(beat.kind)
 }
 
+/// 被限流就把下次心跳往后推：20、40、60 分钟，最长 BACKOFF_MAX；不是限流就回到正常间隔
+fn next_delay(was_limited: bool, limited: &mut u32) -> Duration {
+    if !was_limited {
+        *limited = 0;
+        return BEAT;
+    }
+    *limited = (*limited + 1).min(8);
+    (BEAT * 2u32.pow(*limited)).min(BACKOFF_MAX)
+}
+
 fn payload(app: &AppHandle, kind: &str) -> Option<String> {
     let (identity, avatar) = {
         let state = app.state::<AppState>();
@@ -255,8 +296,9 @@ fn payload(app: &AppHandle, kind: &str) -> Option<String> {
     }
 }
 
-async fn send(app: &AppHandle, cfg: &ntfy::Config, kind: &str) {
-    let Some(body) = payload(app, kind) else { return };
+/// 返回是否被服务器限流（429）
+async fn send(app: &AppHandle, cfg: &ntfy::Config, kind: &str) -> bool {
+    let Some(body) = payload(app, kind) else { return false };
     let mut req = app
         .state::<AppState>()
         .hub
@@ -270,9 +312,15 @@ async fn send(app: &AppHandle, cfg: &ntfy::Config, kind: &str) {
         req = req.bearer_auth(&cfg.token);
     }
     match req.send().await {
-        Ok(r) if r.status().is_success() => {}
-        Ok(r) => log::warn("presence", "send-failed", json!({ "kind": kind, "status": r.status().as_u16() })),
-        Err(e) => log::warn("presence", "send-failed", json!({ "kind": kind, "detail": log::redact_text(&e.to_string()) })),
+        Ok(r) if r.status().is_success() => false,
+        Ok(r) => {
+            log::warn("presence", "send-failed", json!({ "kind": kind, "status": r.status().as_u16() }));
+            r.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+        }
+        Err(e) => {
+            log::warn("presence", "send-failed", json!({ "kind": kind, "detail": log::redact_text(&e.to_string()) }));
+            false
+        }
     }
 }
 
@@ -283,4 +331,21 @@ pub fn bye(app: &AppHandle) {
     tauri::async_runtime::block_on(async move {
         let _ = tokio::time::timeout(Duration::from_millis(1500), send(&app, &cfg, "bye")).await;
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn beat_backs_off_when_limited() {
+        let mut limited = 0;
+        let mins = |d: Duration| d.as_secs() / 60;
+        assert_eq!(mins(next_delay(true, &mut limited)), 20);
+        assert_eq!(mins(next_delay(true, &mut limited)), 40);
+        assert_eq!(mins(next_delay(true, &mut limited)), 60);
+        assert_eq!(mins(next_delay(true, &mut limited)), 60);
+        assert_eq!(mins(next_delay(false, &mut limited)), 10);
+        assert_eq!(limited, 0);
+    }
 }

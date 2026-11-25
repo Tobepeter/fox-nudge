@@ -26,4 +26,8 @@ welcomed: boolean,
 /**
  * 其他设备的在线状态，只在内存里
  */
-peers: Array<Peer>, version: string, dev: boolean, };
+peers: Array<Peer>, 
+/**
+ * 在线心跳正被服务器限流，静默显示，不弹通知
+ */
+presenceLimited: boolean, version: string, dev: boolean, };

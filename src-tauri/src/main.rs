@@ -51,6 +51,8 @@ struct Snapshot {
     welcomed: bool,
     /// 其他设备的在线状态，只在内存里
     peers: Vec<presence::Peer>,
+    /// 在线心跳正被服务器限流，静默显示，不弹通知
+    presence_limited: bool,
     version: String,
     dev: bool,
 }
@@ -103,6 +105,7 @@ fn snapshot(app: &tauri::AppHandle) -> Snapshot {
         paused_until: pause::until(app).unwrap_or(0),
         welcomed: data.welcomed,
         peers: presence::peers(app),
+        presence_limited: presence::limited(app),
         version: env!("CARGO_PKG_VERSION").into(),
         dev: cfg!(debug_assertions),
     }
