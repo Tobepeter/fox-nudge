@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     fs,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     os::unix::{
         fs::PermissionsExt,
         net::{UnixListener, UnixStream},
@@ -18,7 +18,7 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
-const COMMANDS: &[&str] = &["status", "send", "pause", "resume", "history", "open", "help"];
+const COMMANDS: &[&str] = &["status", "send", "name", "peers", "pause", "resume", "history", "open", "help"];
 const MARK: &str = "# FoxNudge 命令行";
 const IDENTIFIER: &str = "com.tobe.fox-nudge";
 
@@ -29,6 +29,9 @@ const HELP: &str = "FoxNudge 命令行
   status              连接状态、是否暂停
   send <文字>          广播一条消息（加密、带身份，和点文案一样）
   send --self <文字>   只发给自己：本机记录并提醒，不经过服务器（Agent 跑完任务用）
+  send -              正文从标准输入读，适合带引号、换行的文字
+  name [新昵称]        看或改昵称；name --reset 回到系统账户名
+  peers               其他电脑谁在线、有没有暂停
   pause [时长]         暂停提醒，默认 30 分钟；时长如 30m、2h、45、morning（到明早 9 点）
   resume              恢复提醒
   history [-n 10]     最近几条消息
@@ -36,6 +39,7 @@ const HELP: &str = "FoxNudge 命令行
 
   --json              输出 JSON，给脚本和 Agent 用
   --launch            FoxNudge 没在运行时先打开它
+  --                  后面的都当正文，不再识别 --json 这类标记
 
 退出码：0 成功，1 失败，2 FoxNudge 没在运行";
 
@@ -75,18 +79,21 @@ impl Reply {
     }
 }
 
-/// 解析命令行：(请求, --json, --launch)；不是 CLI 命令返回 None，照常启动应用
+/// 解析命令行：(请求, --json, --launch)；不带参数或第一个是 - 开头的启动参数（--hidden、-psn_…）返回 None，照常启动应用
+/// 其余都当命令，打错的也交给 run 报「未知命令」，不会误开窗口
 fn parse(args: &[String]) -> Option<(Request, bool, bool)> {
     let cmd = args.get(1)?;
     let cmd = match cmd.as_str() {
         "-h" | "--help" => "help",
-        c if COMMANDS.contains(&c) => c,
-        _ => return None,
+        c if c.starts_with('-') => return None,
+        c => c,
     };
     let mut rest = vec![];
-    let (mut json, mut launch, mut to_self) = (false, false, false);
+    let (mut json, mut launch, mut to_self, mut literal) = (false, false, false, false);
     for a in &args[2..] {
         match a.as_str() {
+            _ if literal => rest.push(a.clone()),
+            "--" => literal = true,
             "--json" => json = true,
             "--launch" => launch = true,
             "--self" => to_self = true,
@@ -98,10 +105,21 @@ fn parse(args: &[String]) -> Option<(Request, bool, bool)> {
 
 /// main() 最先调用：是 CLI 命令就执行并返回退出码，否则返回 None
 pub fn run(args: &[String]) -> Option<i32> {
-    let (request, json, launch) = parse(args)?;
+    let (mut request, json, launch) = parse(args)?;
     if request.cmd == "help" {
         println!("{HELP}");
         return Some(0);
+    }
+    if !COMMANDS.contains(&request.cmd.as_str()) {
+        return Some(fail(json, 1, &format!("未知命令「{}」，fox-nudge help 看用法", request.cmd)));
+    }
+    // send - ：正文从标准输入读，在这边读完再交给应用
+    if request.cmd == "send" && request.args == ["-"] {
+        let mut text = String::new();
+        if std::io::stdin().read_to_string(&mut text).is_err() {
+            return Some(fail(json, 1, "读不了标准输入"));
+        }
+        request.args = vec![text.trim_end().to_string()];
     }
     let stream = match UnixStream::connect(socket_path()) {
         Ok(s) => s,
@@ -219,6 +237,8 @@ fn handle(app: &AppHandle, request: Request) -> Reply {
                 Err(e) => Reply::err(format!("发送失败：{e}")),
             }
         }
+        "name" => name(app, &args),
+        "peers" => peers(app),
         "pause" => {
             let preset = args.first().map(String::as_str).unwrap_or("30m");
             match crate::pause::start(app, preset) {
@@ -248,10 +268,12 @@ fn status(app: &AppHandle) -> Reply {
     let connection = state.hub.status.lock().unwrap().clone();
     let name = state.data.lock().unwrap().identity.name.clone();
     let paused = crate::pause::until(app);
+    let online = crate::presence::peers(app).iter().filter(|p| p.online).count();
     let mut text = crate::tray::connection_label(&connection);
     if let Some(at) = paused {
         text += &format!(" · 已暂停提醒至 {}", crate::pause::label(at));
     }
+    text += &format!(" · 另有 {online} 台在线");
     Reply::ok(
         text,
         json!({
@@ -259,10 +281,59 @@ fn status(app: &AppHandle) -> Reply {
             "error": connection.error,
             "pausedUntil": paused,
             "name": name,
+            "peersOnline": online,
             "build": if cfg!(debug_assertions) { "dev" } else { "release" },
             "version": env!("CARGO_PKG_VERSION"),
         }),
     )
+}
+
+/// 不带参数看昵称；带了就改，和设置里改名同一套规则；--reset 回到系统账户名
+fn name(app: &AppHandle, args: &[String]) -> Reply {
+    let current = || app.state::<AppState>().data.lock().unwrap().identity.name.clone();
+    if args.is_empty() {
+        let name = current();
+        return Reply::ok(name.clone(), json!({ "name": name }));
+    }
+    let input = if args == ["--reset"] { String::new() } else { args.join(" ") };
+    match crate::save_identity(app.clone(), input) {
+        Ok(()) => {
+            let name = current();
+            Reply::ok(format!("昵称改成了「{name}」"), json!({ "name": name }))
+        }
+        Err(e) => Reply::err(format!("改昵称失败：{e}")),
+    }
+}
+
+fn peers(app: &AppHandle) -> Reply {
+    let list = crate::presence::peers(app);
+    let limited = crate::presence::limited(app);
+    let now = chrono::Utc::now().timestamp();
+    let mut lines: Vec<String> = list
+        .iter()
+        .map(|p| {
+            let state = if !p.online {
+                let minutes = (now - p.last_seen) / 60;
+                match minutes {
+                    m if m < 60 => format!("{m} 分钟前在线"),
+                    m if m < 24 * 60 => format!("{} 小时前在线", m / 60),
+                    m => format!("{} 天前在线", m / 60 / 24),
+                }
+            } else if p.paused {
+                "在线 · 暂停提醒中".into()
+            } else {
+                "在线".into()
+            };
+            format!("{}  {state}", p.name)
+        })
+        .collect();
+    if lines.is_empty() {
+        lines.push("暂时没有其他设备在线".into());
+    }
+    if limited {
+        lines.push("（在线心跳正被服务器限流，名单可能过时）".into());
+    }
+    Reply::ok(lines.join("\n"), json!({ "peers": list, "limited": limited }))
 }
 
 fn history(app: &AppHandle, args: &[String]) -> Reply {
@@ -374,6 +445,12 @@ mod tests {
         assert_eq!(r.cmd, "pause");
         assert!(r.args.is_empty() && launch);
         assert_eq!(parse(&args(&["fox-nudge", "--help"])).unwrap().0.cmd, "help");
+        // -- 之后原样当正文
+        let (r, json, _) = parse(&args(&["fox-nudge", "send", "--", "记得加", "--self", "--json"])).unwrap();
+        assert!(!r.to_self && !json);
+        assert_eq!(r.args, args(&["记得加", "--self", "--json"]));
+        // 打错的命令也解析出来，由 run 报未知命令，不当成启动
+        assert_eq!(parse(&args(&["fox-nudge", "stauts"])).unwrap().0.cmd, "stauts");
         // 应用自己的启动参数不算命令
         assert!(parse(&args(&["fox-nudge"])).is_none());
         assert!(parse(&args(&["fox-nudge", "--hidden"])).is_none());
